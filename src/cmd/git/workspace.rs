@@ -178,7 +178,16 @@ async fn handle_add(
 
     worktree::EntriesManager::save(&worktree_path, &entries_map)?;
 
-    let commit_id = repo.add_and_commit("Initial checkout")?;
+    let commit_message = format!(
+        "Initial checkout from remote\n\nSpace: {} ({})\nRoot entry: {}\nFetched: {} folders, {} pages, {} files",
+        space_name,
+        space_id,
+        root_entry_id,
+        stats.folders_created,
+        stats.pages_pulled,
+        stats.files_pulled
+    );
+    let commit_id = repo.add_and_commit(&commit_message)?;
     wt_config.set_remote_snapshot(commit_id);
 
     wt_config.save(&worktree_path)?;
@@ -561,7 +570,15 @@ async fn handle_pull(config: &Config) -> Result<()> {
 
     let mut repo = Repository::open(&worktree_path)?;
     if repo.has_uncommitted_changes()? {
-        let commit_id = repo.add_and_commit("Pull from remote")?;
+        let commit_message = format!(
+            "Pull from remote\n\nSpace: {} ({})\nPulled: {} folders, {} pages, {} files",
+            wt_config.space_name,
+            wt_config.space_id,
+            stats.folders_created,
+            stats.pages_pulled,
+            stats.files_pulled
+        );
+        let commit_id = repo.add_and_commit(&commit_message)?;
         println!("Committed: {}", &commit_id[..8]);
     }
 
