@@ -1,9 +1,13 @@
 use crate::config::Config;
 use crate::mcp;
 use crate::mcp::schema::{build_tool_args, CommandGenerator, McpSchemaCollection};
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use super::output::{print_csv, print_markdown, print_table, FieldFilter};
+
+fn parse_field_list(fields_arg: Option<&String>) -> Option<Vec<String>> {
+    fields_arg.map(|s| s.split(',').map(|f| f.trim().to_string()).collect())
+}
 
 pub async fn handle_dynamic_command(args: &[String], schema: &McpSchemaCollection) -> Result<()> {
     let config = Config::load()?;
@@ -22,8 +26,12 @@ pub async fn handle_dynamic_command(args: &[String], schema: &McpSchemaCollectio
 
     let matches = cmd.try_get_matches_from(args)?;
 
-    let (namespace, sub_matches) = matches.subcommand().unwrap();
-    let (subcommand, tool_matches) = sub_matches.subcommand().unwrap();
+    let (namespace, sub_matches) = matches
+        .subcommand()
+        .ok_or_else(|| anyhow::anyhow!("No namespace subcommand provided"))?;
+    let (subcommand, tool_matches) = sub_matches
+        .subcommand()
+        .ok_or_else(|| anyhow::anyhow!("No tool subcommand provided for namespace: {}", namespace))?;
 
     let tool_name = find_tool_by_command(schema, namespace, subcommand)?;
 
@@ -45,16 +53,18 @@ pub async fn handle_dynamic_command(args: &[String], schema: &McpSchemaCollectio
         .unwrap_or("json-pretty");
 
     // Build field filter from --fields and --all-fields flags
-    let fields: Option<Vec<String>> = tool_matches
-        .get_one::<String>("fields")
-        .map(|s| s.split(',').map(|f| f.trim().to_string()).collect());
+    let fields: Option<Vec<String>> = parse_field_list(tool_matches.get_one::<String>("fields"));
     let all_fields = tool_matches.get_flag("all_fields");
     let filter = FieldFilter::new(fields, all_fields);
 
     match format {
         "json" => println!("{}", result),
         "table" => print_table(&result, &filter),
-        "yaml" => println!("{}", serde_yaml::to_string(&result)?),
+        "yaml" => {
+            let yaml = serde_yaml::to_string(&result)
+                .context("Failed to convert result to YAML format")?;
+            println!("{}", yaml);
+        }
         "csv" => print_csv(&result, &filter),
         "markdown" => print_markdown(&result, &filter),
         _ => println!("{}", serde_json::to_string_pretty(&result)?),
@@ -92,28 +102,29 @@ fn find_tool_by_command(
 pub fn print_help_with_dynamic_commands(schema: Option<&McpSchemaCollection>) {
     use mcp::schema::extract_namespace;
 
-    println!("Lexiang CLI - A command-line tool for Lexiang MCP");
-    println!();
-    println!("Usage: lx [COMMAND]");
-    println!();
-    println!("Commands:");
+    println!(
+        "Lexiang CLI - A command-line tool for Lexiang MCP
 
-    println!("  search         Search in knowledge base (shortcut for 'lexiang search')");
-    println!("  lexiang        Lexiang namespace commands");
-    println!("  mcp            MCP operations");
-    println!("  tools          Tools schema management");
-    println!("  skill          Manage AI agent skill files (generate, install, uninstall)");
-    println!("  git            Git-style commands for local workspace");
-    println!("  worktree       Worktree management (manage multiple local workspaces)");
-    println!("  completion     Generate shell completion script");
-    println!("  login          Login via OAuth");
-    println!("  logout         Logout and remove credentials");
-    println!("  start          Start daemon with virtual filesystem");
-    println!("  stop           Stop daemon");
-    println!("  status         Show daemon status");
-    println!("  version        Print version");
-    println!("  update         Check for updates from GitHub releases");
-    println!("  sh             Virtual shell for knowledge base exploration");
+Usage: lx [COMMAND]
+
+Commands:
+  search         Search in knowledge base (shortcut for 'lexiang search')
+  lexiang        Lexiang namespace commands
+  mcp            MCP operations
+  tools          Tools schema management
+  skill          Manage AI agent skill files (generate, install, uninstall)
+  git            Git-style commands for local workspace
+  worktree       Worktree management (manage multiple local workspaces)
+  completion     Generate shell completion script
+  login          Login via OAuth
+  logout         Logout and remove credentials
+  start          Start daemon with virtual filesystem
+  stop           Stop daemon
+  status         Show daemon status
+  version        Print version
+  update         Check for updates from GitHub releases
+  sh             Virtual shell for knowledge base exploration"
+    );
 
     if let Some(schema) = schema {
         println!();
@@ -130,9 +141,11 @@ pub fn print_help_with_dynamic_commands(schema: Option<&McpSchemaCollection>) {
         }
     }
 
-    println!();
-    println!("  help           Print this message or the help of the given subcommand(s)");
-    println!();
-    println!("Options:");
-    println!("  -h, --help  Print help");
+    println!(
+        "
+  help           Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help"
+    );
 }
