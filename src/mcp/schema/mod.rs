@@ -11,13 +11,13 @@ pub use types::*;
 use crate::mcp::ToolSchema;
 use std::collections::HashMap;
 
-/// Schema 管理器 - 合并多层 schema（embedded + unlisted < override < custom < dynamic）
+/// Schema manager - merges multi-layer schemas (embedded + unlisted < override < custom < dynamic)
 pub struct SchemaManager {
-    /// 编译时嵌入的 schema（已含 unlisted tools）
+    /// Schemas embedded at compile time (includes unlisted tools)
     embedded: HashMap<String, ToolSchema>,
-    /// 运行时动态获取的 schema
+    /// Schemas fetched dynamically at runtime
     dynamic: HashMap<String, ToolSchema>,
-    /// 完整的 schema collection（包含 category 信息）
+    /// Complete schema collection (includes category information)
     collection: Option<McpSchemaCollection>,
 }
 
@@ -30,7 +30,7 @@ impl SchemaManager {
         }
     }
 
-    /// 从运行时配置加载
+    /// Load from runtime configuration
     pub fn load_from_runtime() -> Self {
         let mut manager = Self::new();
 

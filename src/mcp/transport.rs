@@ -29,20 +29,17 @@ impl HttpTransport {
     ) -> Result<T> {
         let request = JsonRpcRequest::new(method, params);
 
-        let mut url = self.url.clone();
+        let mut request_builder = self.client.post(&self.url).json(&request);
         if let Some(token) = &self.access_token {
-            url = format!("{}?access_token={}", url, token);
+            request_builder = request_builder.bearer_auth(token);
         }
 
-        let response = self.client.post(&url).json(&request).send().await?;
+        let response = request_builder.send().await?;
 
         let rpc_response: JsonRpcResponse<T> = response.json().await?;
 
         if let Some(error) = rpc_response.error {
-            anyhow::bail!(
-                "{}",
-                crate::cmd::ui::friendly_mcp_error(error.code, &error.message)
-            );
+            anyhow::bail!("MCP error {}: {}", error.code, error.message);
         }
 
         rpc_response

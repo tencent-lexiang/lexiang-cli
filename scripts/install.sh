@@ -115,6 +115,19 @@ detect_asset() {
   esac
 }
 
+build_tag_from_version() {
+  version="$1"
+
+  case "$version" in
+    cli-v*)
+      printf '%s' "$version"
+      ;;
+    *)
+      printf 'cli-v%s' "$version"
+      ;;
+  esac
+}
+
 build_download_url() {
   asset="$1"
 
@@ -123,14 +136,7 @@ build_download_url() {
     return
   fi
 
-  case "$VERSION" in
-    cli-v*)
-      tag="$VERSION"
-      ;;
-    *)
-      tag="cli-v$VERSION"
-      ;;
-  esac
+  tag=$(build_tag_from_version "$VERSION")
 
   printf 'https://github.com/%s/releases/download/%s/%s' "$REPO" "$tag" "$asset"
 }
@@ -141,14 +147,7 @@ build_checksums_url() {
     return
   fi
 
-  case "$VERSION" in
-    cli-v*)
-      tag="$VERSION"
-      ;;
-    *)
-      tag="cli-v$VERSION"
-      ;;
-  esac
+  tag=$(build_tag_from_version "$VERSION")
 
   printf 'https://github.com/%s/releases/download/%s/SHA256SUMS.txt' "$REPO" "$tag"
 }
