@@ -29,9 +29,9 @@ pub async fn handle_dynamic_command(args: &[String], schema: &McpSchemaCollectio
     let (namespace, sub_matches) = matches
         .subcommand()
         .ok_or_else(|| anyhow::anyhow!("No namespace subcommand provided"))?;
-    let (subcommand, tool_matches) = sub_matches
-        .subcommand()
-        .ok_or_else(|| anyhow::anyhow!("No tool subcommand provided for namespace: {}", namespace))?;
+    let (subcommand, tool_matches) = sub_matches.subcommand().ok_or_else(|| {
+        anyhow::anyhow!("No tool subcommand provided for namespace: {}", namespace)
+    })?;
 
     let tool_name = find_tool_by_command(schema, namespace, subcommand)?;
 
