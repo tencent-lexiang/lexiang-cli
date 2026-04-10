@@ -4,8 +4,6 @@ on:
   push:
     tags:
       - 'openclaw-v*'
-  release:
-    types: [published]
 
 defaults:
   run:
@@ -52,6 +50,14 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: Set version from git tag
+        run: |
+          # tag 格式: openclaw-v0.0.1  →  去掉前缀得到 v0.0.1
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#openclaw-}"          # 去掉 "openclaw-" 前缀，保留 "v0.0.1"
+          echo "Publishing version: $VERSION"
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
 
       - name: Publish
         run: npm publish
