@@ -31,9 +31,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24'
-          registry-url: 'https://npm.pkg.github.com'
           cache: 'pnpm'
           cache-dependency-path: openclaw/pnpm-lock.yaml
+
+      - name: Generate .npmrc for GitHub Packages
+        run: |
+          cat > .npmrc <<'EOF'
+          @tencent-lexiang:registry=https://npm.pkg.github.com
+          //npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
+          always-auth=true
+          EOF
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -45,6 +54,6 @@ jobs:
         run: pnpm build
 
       - name: Publish
-        run: npm publish --access public
+        run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
