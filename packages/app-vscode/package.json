@@ -444,13 +444,13 @@
     "@vscode/codicons": "^0.0.44",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.7.1",
-    "esbuild": "^0.25.10",
+    "esbuild": "^0.26.0",
     "fast-glob": "^3.3.3",
     "fzf": "^0.5.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.4",
     "sql.js": "^1.14.1",
     "typescript": "^5.4.0",
-    "vitest": "^1.6.1"
+    "vitest": "^4.1.4"
   }
 }
