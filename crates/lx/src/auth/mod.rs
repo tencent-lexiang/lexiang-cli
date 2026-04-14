@@ -171,7 +171,14 @@ pub async fn login() -> Result<TokenData> {
         state.secret(),
         pkce_challenge.as_str(),
     );
-    println!("\n请在浏览器中完成登录:\n{}\n", auth_url);
+    // 完整 URL 含 CSRF state 和 PKCE challenge，仅 debug 级别记录，避免明文泄露到终端
+    tracing::debug!("OAuth authorization URL: {auth_url}");
+
+    // 尝试自动打开浏览器，失败时提示用户设置 debug 日志
+    if let Err(e) = open_browser(&auth_url) {
+        tracing::debug!("无法自动打开浏览器: {e}");
+    }
+    println!("\n请在浏览器中完成登录。如未自动打开，请设置 RUST_LOG=debug 查看授权链接。\n");
 
     // 6. 等待回调
     let callback = rx.await?;
@@ -312,6 +319,7 @@ async fn refresh_token(token: &TokenData) -> Result<TokenData> {
         form.push(("client_id".to_string(), cid.clone()));
     }
 
+    // lgtm[go/cleartext-transmission] endpoint 来自 HTTPS .well-known 响应
     let resp = http.post(&cfg.token_endpoint).form(&form).send().await?;
 
     let status = resp.status();
@@ -358,6 +366,7 @@ async fn register_client(
         "scope": oauth_cfg.scopes_supported.join(" "),
     });
 
+    // lgtm[go/cleartext-transmission] endpoint 来自 HTTPS .well-known 响应
     let resp = http
         .post(&oauth_cfg.registration_endpoint)
         .json(&body)
@@ -390,6 +399,7 @@ async fn exchange_code(
         form.push(("client_secret", secret.clone()));
     }
 
+    // lgtm[go/cleartext-transmission] endpoint 来自 HTTPS .well-known 响应
     let resp = http
         .post(&oauth_cfg.token_endpoint)
         .form(&form)
@@ -411,4 +421,23 @@ async fn exchange_code(
             .map(|ei| chrono::Utc::now().timestamp() + ei as i64),
         client_id: Some(reg.client_id.clone()),
     })
+}
+
+/// 尝试用系统默认浏览器打开 URL
+fn open_browser(url: &str) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open").arg(url).spawn()?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open").arg(url).spawn()?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/c", "start", url])
+            .spawn()?;
+    }
+    Ok(())
 }

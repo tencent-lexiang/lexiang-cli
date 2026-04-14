@@ -1,22 +1,24 @@
-# lx - 乐享知识库命令行工具
+# lexiang-cli - 乐享知识库工具集
 
-[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](Cargo.toml)
 
-`lx` 是乐享知识库的命令行工具，支持在线操作和本地工作区两种模式，提供虚拟 Shell 浏览、Git 版本化管理、动态命令同步等能力。
+乐享知识库工具集，包含 **3 个独立产品**：
 
-## ✨ 核心特性
+| 产品 | 说明 | 安装方式 | 更新方式 |
+|------|------|----------|----------|
+| **lx CLI** | 命令行工具，虚拟 Shell / Git 版本化管理 / 动态命令 | 安装脚本 / cargo / Release | 自动检查（24h） |
+| **VS Code 扩展** | VS Code 知识库浏览与编辑插件 | Release 下载 .vsix | 自动检查（4h） |
+| **OpenClaw 插件** | OpenClaw 平台的知识库集成插件 | npm / openclaw CLI | openclaw plugins update |
 
-- 🐚 **Just-Bash 虚拟 Shell** - `lx sh` 用熟悉的 UNIX 命令浏览和搜索知识库
-- 📁 **Git 版本化管理** - `lx git` 克隆知识库到本地，离线编辑、批量同步、版本回退
-- 🔧 **动态命令系统** - 自动从 MCP Schema 生成命令，新功能一键同步
-- 📦 **多格式输出** - 支持 JSON、YAML、CSV、Markdown、表格等 6 种格式
-- 🎨 **Shell 补全** - 支持 Bash、Zsh、Fish、PowerShell 自动补全
+> 三个产品共享同一仓库，通过不同的 Release Tag 独立发布：`cli-v*`、`vscode-v*`、`openclaw-v*`。
+
+---
 
 ## 📦 安装
 
-### lx CLI
+### 1. lx CLI
+
+Rust 编写的命令行工具，支持在线操作和本地工作区两种模式。
 
 #### 无 Cargo 环境（推荐）
 
@@ -64,9 +66,11 @@ lx update list      # 列出最近发布版本
 
 CLI 每隔 24 小时自动静默检查更新，有新版本时提示。
 
-### VS Code 扩展
+### 2. VS Code 扩展
 
-从 [GitHub Releases](https://github.com/tencent-lexiang/lexiang-cli/releases) 下载 `.vsix` 文件，然后：
+在 VS Code 中浏览和管理乐享知识库，支持文档查看、知识库挂载、AI 对话集成等。
+
+从 [GitHub Releases](https://github.com/tencent-lexiang/lexiang-cli/releases) 下载 `.vsix` 文件（标签以 `vscode-v` 开头），然后：
 
 ```bash
 code --install-extension lefs-vscode-*.vsix
@@ -76,7 +80,9 @@ code --install-extension lefs-vscode-*.vsix
 
 扩展启动后每 4 小时自动从 GitHub Release 检查更新，有新版本时提示一键更新。
 
-### OpenClaw 插件
+### 3. OpenClaw 插件
+
+为 OpenClaw 平台提供乐享知识库集成能力。
 
 ```bash
 # 安装

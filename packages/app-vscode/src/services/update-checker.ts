@@ -15,7 +15,8 @@ import * as vscode from 'vscode';
 
 const GITHUB_OWNER = 'nicholasniu';
 const GITHUB_REPO = 'lexiang-cli';
-const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
+const GITHUB_RELEASES_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases?per_page=20`;
+const VSCODE_TAG_PREFIX = 'vscode-v';
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 小时
 const FETCH_TIMEOUT_MS = 8000;
 
@@ -150,15 +151,19 @@ export class UpdateChecker implements vscode.Disposable {
     vsixUrl: string;
     releaseUrl: string;
   } | null> {
-    const data = await fetchJson<GitHubRelease>(GITHUB_API_URL);
+    const data = await fetchJson<GitHubRelease[]>(GITHUB_RELEASES_URL);
     if (!data) return null;
-    if (data.draft || data.prerelease) return null;
 
-    // tag 格式：vscode-v0.1.0
-    const version = data.tag_name.replace(/^vscode-v/, '');
+    // 找到 tag 以 vscode-v 开头的最新 release（非 draft/prerelease）
+    const vscodeRelease = data.find(
+      (r) => !r.draft && !r.prerelease && r.tag_name.startsWith(VSCODE_TAG_PREFIX),
+    );
+    if (!vscodeRelease) return null;
+
+    const version = vscodeRelease.tag_name.slice(VSCODE_TAG_PREFIX.length);
     if (!version) return null;
 
-    const vsixAsset = findVsixAsset(data.assets);
+    const vsixAsset = findVsixAsset(vscodeRelease.assets);
     if (!vsixAsset) {
       this.log('updateChecker: Release 中未找到 .vsix 文件');
       return null;
@@ -167,7 +172,7 @@ export class UpdateChecker implements vscode.Disposable {
     return {
       version,
       vsixUrl: vsixAsset.browser_download_url,
-      releaseUrl: data.html_url,
+      releaseUrl: vscodeRelease.html_url,
     };
   }
 
