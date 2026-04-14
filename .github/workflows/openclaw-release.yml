@@ -1,4 +1,4 @@
-name: OpenClaw NPM Publish
+name: OpenClaw Publish
 
 on:
   push:
@@ -7,16 +7,15 @@ on:
 
 defaults:
   run:
-    working-directory: openclaw
+    working-directory: packages/openclaw
     
 jobs:
   publish:
-    name: Publish to NPM Registry
+    name: Publish to npm
     runs-on: ubuntu-latest
     environment: openclaw-release
     permissions:
       contents: read
-      packages: write
       id-token: write
     steps:
       - uses: actions/checkout@v5
@@ -32,7 +31,7 @@ jobs:
           node-version: '20.x'
           registry-url: 'https://registry.npmjs.org'
           cache: 'pnpm'
-          cache-dependency-path: openclaw/pnpm-lock.yaml
+          cache-dependency-path: packages/openclaw/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

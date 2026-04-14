@@ -16,7 +16,9 @@
 
 ## 📦 安装
 
-### 无 Cargo 环境（推荐）
+### lx CLI
+
+#### 无 Cargo 环境（推荐）
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tencent-lexiang/lexiang-cli/main/scripts/install.sh | sh
@@ -35,24 +37,65 @@ curl -fsSL https://raw.githubusercontent.com/tencent-lexiang/lexiang-cli/main/sc
 - 校验 `SHA256SUMS.txt`
 - 安装到 `~/.local/bin`（或你指定的目录）
 
-### Rust 生态安装
-
-如果本机已安装 Rust，也可以直接用 Cargo 从 GitHub 安装：
+#### Rust 生态安装
 
 ```bash
-cargo install --git https://github.com/tencent-lexiang/lexiang-cli --locked lexiang-cli
+cargo install --git https://github.com/tencent-lexiang/lexiang-cli --locked
 ```
 
-### 从 Release 下载
+#### 从 Release 下载
 
-如果你不想使用脚本，也可以直接从 [GitHub Releases](https://github.com/tencent-lexiang/lexiang-cli/releases) 下载对应平台二进制。
+直接从 [GitHub Releases](https://github.com/tencent-lexiang/lexiang-cli/releases) 下载对应平台二进制，支持 macOS (arm64/x86_64/universal)、Linux (x86_64/arm64/musl)、Windows (x86_64)。
 
-### 本地源码安装
+#### 本地源码安装
 
 ```bash
 git clone https://github.com/tencent-lexiang/lexiang-cli.git
 cd lexiang-cli
-cargo install --path .
+cargo install --path crates/lx
+```
+
+#### 更新检查
+
+```bash
+lx update check     # 检查是否有新版本
+lx update list      # 列出最近发布版本
+```
+
+CLI 每隔 24 小时自动静默检查更新，有新版本时提示。
+
+### VS Code 扩展
+
+从 [GitHub Releases](https://github.com/tencent-lexiang/lexiang-cli/releases) 下载 `.vsix` 文件，然后：
+
+```bash
+code --install-extension lefs-vscode-*.vsix
+```
+
+或在 VS Code 中：Extensions → `...` → Install from VSIX...
+
+扩展启动后每 4 小时自动从 GitHub Release 检查更新，有新版本时提示一键更新。
+
+### OpenClaw 插件
+
+```bash
+# 安装
+openclaw plugins install @tencent-lexiang/openclaw-lexiang
+
+# 交互式配置（自动安装 lx CLI + 配置 Token）
+openclaw onboard
+```
+
+也可以从 [npm](https://www.npmjs.com/package/@tencent-lexiang/openclaw-lexiang) 直接安装：
+
+```bash
+npm install -g @tencent-lexiang/openclaw-lexiang
+```
+
+更新：
+
+```bash
+openclaw plugins update @tencent-lexiang/openclaw-lexiang
 ```
 
 ## 🚀 快速开始
@@ -95,16 +138,16 @@ lx sh --space <SPACE_ID> -e "tree -L 2 /kb"
 
 ### 内置命令
 
-| 命令 | 说明 | 命令 | 说明 |
-|------|------|------|------|
-| `ls` | 列出目录 | `cat` | 查看文件内容 |
-| `grep` | 搜索文本 | `find` | 查找文件 |
-| `tree` | 目录树 | `head` / `tail` | 查看头部/尾部 |
-| `wc` | 统计行数/单词/字符 | `sort` / `uniq` | 排序/去重 |
-| `pwd` / `cd` | 路径导航 | `echo` | 输出文本 |
-| `stat` | 查看文件信息 | `xargs` | 参数传递 |
-| `fzf` | 模糊筛选 | `search` | 知识库关键词搜索 |
-| `git` | Git 操作（仅 Worktree） | `mcp` | 透传调用 MCP Tool |
+| 命令         | 说明                    | 命令            | 说明              |
+|--------------|-------------------------|-----------------|-------------------|
+| `ls`         | 列出目录                | `cat`           | 查看文件内容      |
+| `grep`       | 搜索文本                | `find`          | 查找文件          |
+| `tree`       | 目录树                  | `head` / `tail` | 查看头部/尾部     |
+| `wc`         | 统计行数/单词/字符      | `sort` / `uniq` | 排序/去重         |
+| `pwd` / `cd` | 路径导航                | `echo`          | 输出文本          |
+| `stat`       | 查看文件信息            | `xargs`         | 参数传递          |
+| `fzf`        | 模糊筛选                | `search`        | 知识库关键词搜索  |
+| `git`        | Git 操作（仅 Worktree） | `mcp`           | 透传调用 MCP Tool |
 
 ### 现代 CLI 兼容
 
@@ -120,47 +163,47 @@ lx sh --space <SPACE_ID> -e "tree -L 2 /kb"
 
 ### 命令
 
-| 命令 | 说明 |
-|------|------|
-| `lx git clone <space_id> <path>` | 克隆知识库到本地 |
-| `lx git status` | 查看本地变更状态 |
-| `lx git add` | 暂存文件变更 |
-| `lx git commit -m "msg"` | 提交到本地仓库 |
-| `lx git push` | 推送本地变更到乐享知识库 |
-| `lx git pull` | 拉取乐享知识库最新内容 |
-| `lx git log` | 查看本地提交历史 |
-| `lx git diff` | 查看本地变更详情 |
-| `lx git diff --remote` | 对比本地与远端差异 |
-| `lx git reset` | 本地版本回退 |
-| `lx git revert <commit>` | 回退知识库到历史版本（推送后生效） |
-| `lx worktree list` | 列出所有工作区 |
-| `lx worktree remove <path>` | 删除工作区 |
+| 命令                             | 说明                               |
+|----------------------------------|------------------------------------|
+| `lx git clone <space_id> <path>` | 克隆知识库到本地                   |
+| `lx git status`                  | 查看本地变更状态                   |
+| `lx git add`                     | 暂存文件变更                       |
+| `lx git commit -m "msg"`         | 提交到本地仓库                     |
+| `lx git push`                    | 推送本地变更到乐享知识库           |
+| `lx git pull`                    | 拉取乐享知识库最新内容             |
+| `lx git log`                     | 查看本地提交历史                   |
+| `lx git diff`                    | 查看本地变更详情                   |
+| `lx git diff --remote`           | 对比本地与远端差异                 |
+| `lx git reset`                   | 本地版本回退                       |
+| `lx git revert <commit>`         | 回退知识库到历史版本（推送后生效） |
+| `lx worktree list`               | 列出所有工作区                     |
+| `lx worktree remove <path>`      | 删除工作区                         |
 
 ### 支持的文件类型
 
-| 类型 | 本地文件 | 拉取 | 推送 | 版本回退 |
-|------|---------|------|------|---------|
-| 页面 | `.md` | ✅ 转为 Markdown | ✅ 覆盖内容 | ✅ |
-| 文件 | PDF/DOCX/XLSX | ✅ 下载原文件 | ✅ 预签名上传 | ✅ |
-| 文件夹 | 目录 | ✅ 创建目录结构 | ✅ 自动创建 | - |
+| 类型   | 本地文件      | 拉取            | 推送         | 版本回退 |
+|--------|---------------|-----------------|--------------|----------|
+| 页面   | `.md`         | ✅ 转为 Markdown | ✅ 覆盖内容   | ✅        |
+| 文件   | PDF/DOCX/XLSX | ✅ 下载原文件    | ✅ 预签名上传 | ✅        |
+| 文件夹 | 目录          | ✅ 创建目录结构  | ✅ 自动创建   | -        |
 
 ## 🔧 动态命令系统
 
 CLI 自动从 MCP Schema 生成命令，新功能上线后只需 `lx tools sync` 即可同步。
 
-| 命名空间 | 说明 | 命令数 |
-|---------|------|-------|
-| `team` | 团队接口 | 3 |
-| `space` | 知识库接口 | 3 |
-| `entry` | 知识增删改查 | 10 |
-| `block` | 在线文档 | 10 |
-| `file` | 知识文件 | 5 |
-| `search` | 搜索 | 2 |
-| `ppt` | PPT 服务 | 6 |
-| `meeting` | 腾讯会议 | 5 |
-| `comment` | 知识评论 | 2 |
-| `contact` | 联系人 | 2 |
-| `iwiki` | iWiki | 1 |
+| 命名空间  | 说明         | 命令数 |
+|-----------|--------------|--------|
+| `team`    | 团队接口     | 3      |
+| `space`   | 知识库接口   | 3      |
+| `entry`   | 知识增删改查 | 10     |
+| `block`   | 在线文档     | 10     |
+| `file`    | 知识文件     | 5      |
+| `search`  | 搜索         | 2      |
+| `ppt`     | PPT 服务     | 6      |
+| `meeting` | 腾讯会议     | 5      |
+| `comment` | 知识评论     | 2      |
+| `contact` | 联系人       | 2      |
+| `iwiki`   | iWiki        | 1      |
 
 工具管理命令：`lx tools sync`、`lx tools categories`、`lx tools list --category <name>`、`lx tools skill`
 
@@ -176,18 +219,18 @@ lx completion fish > ~/.config/fish/completions/lx.fish  # Fish
 
 ## ⚙️ 配置
 
-| 文件 | 位置 | 说明 |
-|------|------|------|
-| 主配置 | `~/.lexiang/config.json` | MCP 地址等 |
-| Token | `~/.lexiang/auth/token.json` | OAuth token，支持自动刷新 |
+| 文件   | 位置                             | 说明                                 |
+|--------|----------------------------------|--------------------------------------|
+| 主配置 | `~/.lexiang/config.json`         | MCP 地址等                           |
+| Token  | `~/.lexiang/auth/token.json`     | OAuth token，支持自动刷新            |
 | Schema | `~/.lexiang/tools/override.json` | `lx tools sync` 生成，优先级高于内置 |
 
 ## 🐛 故障排查
 
-| 问题 | 解决方案 |
-|------|---------|
-| Token 过期 | `lx login` |
-| 命令未找到 | `lx tools sync` |
+| 问题         | 解决方案                      |
+|--------------|-------------------------------|
+| Token 过期   | `lx login`                    |
+| 命令未找到   | `lx tools sync`               |
 | 查看详细日志 | `RUST_LOG=debug lx <command>` |
 | 查看请求参数 | `RUST_LOG=trace lx <command>` |
 

@@ -4,20 +4,16 @@ on:
   push:
     branches: [master, main, develop]
     paths:
-      - 'src/**'
+      - 'crates/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
-      - 'build.rs'
-      - 'rustfmt.toml'
       - '.github/workflows/cli-ci.yml'
   pull_request:
     branches: [master, main, develop]
     paths:
-      - 'src/**'
+      - 'crates/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
-      - 'build.rs'
-      - 'rustfmt.toml'
       - '.github/workflows/cli-ci.yml'
 
 env:

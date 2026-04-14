@@ -1,0 +1,88 @@
+name: VS Code Extension CI
+
+on:
+  push:
+    branches: [master, main, develop]
+    paths:
+      - 'packages/app-vscode/**'
+      - '.github/workflows/vscode-ci.yml'
+  pull_request:
+    branches: [master, main, develop]
+    paths:
+      - 'packages/app-vscode/**'
+      - '.github/workflows/vscode-ci.yml'
+
+defaults:
+  run:
+    working-directory: packages/app-vscode
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: packages/app-vscode/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: packages/app-vscode/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit tests
+        run: npx vitest run
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: packages/app-vscode/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (minify)
+        run: node esbuild.mjs --minify
+
+      - name: Package VSIX
+        run: npx vsce package --no-dependencies
+
+      - name: Upload VSIX
+        uses: actions/upload-artifact@v4
+        with:
+          name: lefs-vscode-ci
+          path: packages/app-vscode/*.vsix
+          if-no-files-found: error

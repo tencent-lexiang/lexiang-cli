@@ -1,0 +1,456 @@
+{
+  "name": "lefs-vscode",
+  "displayName": "乐享知识库",
+  "description": "乐享知识库",
+  "icon": "assets/lexiang.png",
+  "version": "0.0.9",
+  "private": true,
+  "engines": {
+    "vscode": "^1.85.0",
+    "node": ">=20.0.0"
+  },
+  "type": "commonjs",
+  "main": "./dist/extension.js",
+  "categories": [
+    "Other"
+  ],
+  "publisher": "lexiang",
+  "activationEvents": [
+    "onView:lefsSpaces",
+    "onView:lefsSpacesSidebar",
+    "onCommand:lefs.selectSpace",
+    "onCommand:lefs.searchKnowledge",
+    "onCommand:lefs.refreshSpaces",
+    "onCommand:lefs.copyMcpConfig",
+    "onCommand:lefs.syncSpace",
+    "onCommand:lefs.stopSpace",
+    "onCommand:lefs.openWebdavUrl",
+    "onCommand:lefs.refreshWebdav",
+    "onCommand:lefs.openDocument",
+    "onCommand:lefs.createFolder",
+    "onCommand:lefs.addToChat",
+    "onCommand:lefs.addToCodeBuddyChat",
+    "onCommand:lefs.addToCopilotChat",
+    "onCommand:lefs.addToGongfengChat",
+    "onCommand:lefs.addActiveLxdocToChat",
+    "onCommand:lefs.fetchEntryContent",
+    "onCommand:lefs.fetchFolderContents",
+    "onCommand:lefs.resetContentQuota",
+    "onCommand:lefs.showLog",
+    "onCommand:lefs.cleanAllCaches",
+    "onCommand:lefs.checkForUpdates",
+    "onCommand:lefs.logout",
+    "onCommand:lefs.openSpaceInBrowser",
+    "onCommand:lefs.openEntryInBrowser"
+  ],
+  "repository": {
+    "url": "https://git.woa.com/shugeniu/lefs.git"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "lefs.selectSpace",
+        "title": "乐享: 选择知识库",
+        "icon": "$(add)"
+      },
+      {
+        "command": "lefs.searchKnowledge",
+        "title": "乐享: 搜索知识",
+        "icon": "$(search)"
+      },
+      {
+        "command": "lefs.syncSpace",
+        "title": "乐享: 同步并挂载知识库",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "lefs.stopSpace",
+        "title": "乐享: 停止挂载",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "lefs.refreshSpaces",
+        "title": "乐享: 刷新知识库列表",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "lefs.openWebdavUrl",
+        "title": "乐享: 复制 WebDAV URL",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "lefs.refreshWebdav",
+        "title": "乐享: 重新同步",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "lefs.openSpaceInBrowser",
+        "title": "乐享: 在浏览器中打开知识库",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "lefs.openEntryInBrowser",
+        "title": "乐享: 在浏览器中打开",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "lefs.copyMcpConfig",
+        "title": "乐享: 复制 MCP 配置片段",
+        "icon": "$(clippy)"
+      },
+      {
+        "command": "lefs.openDocument",
+        "title": "乐享: 打开文档",
+        "icon": "$(file)"
+      },
+      {
+        "command": "lefs.createFolder",
+        "title": "乐享: 新建文件夹",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "lefs.showLog",
+        "title": "乐享: 查看日志"
+      },
+      {
+        "command": "lefs.checkForUpdates",
+        "title": "乐享: 检查更新",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "lefs.cleanAllCaches",
+        "title": "乐享: 清理所有缓存",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "lefs.logout",
+        "title": "乐享: 退出登录",
+        "icon": "$(sign-out)"
+      },
+      {
+        "command": "lefs.addToChat",
+        "title": "乐享: 添加到聊天",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "lefs.addToCodeBuddyChat",
+        "title": "乐享: 添加到 CodeBuddy 对话",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "lefs.addToCopilotChat",
+        "title": "乐享: 添加到 Copilot 对话",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "lefs.addToGongfengChat",
+        "title": "乐享: 添加到工蜂 Copilot 对话",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "lefs.fetchEntryContent",
+        "title": "乐享: 获取文档内容",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "lefs.fetchFolderContents",
+        "title": "乐享: 批量获取文件夹内容",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "lefs.resetContentQuota",
+        "title": "乐享: 重置内容获取配额（调试用）",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "lefs.addActiveLxdocToChat",
+        "title": "乐享: 添加到聊天",
+        "icon": "$(comment-discussion)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "lefs-sidebar",
+          "title": "乐享知识库",
+          "icon": "$(book)"
+        }
+      ]
+    },
+    "views": {
+      "explorer": [
+        {
+          "id": "lefsSpaces",
+          "name": "乐享知识库",
+          "icon": "$(database)",
+          "contextualTitle": "乐享知识库"
+        }
+      ],
+      "lefs-sidebar": [
+        {
+          "id": "lefsSpaceStatus",
+          "name": "状态",
+          "type": "webview"
+        },
+        {
+          "id": "lefsSpacesSidebar",
+          "name": "知识库",
+          "icon": "$(database)",
+          "contextualTitle": "乐享知识库"
+        }
+      ]
+    },
+    "submenus": [
+      {
+        "id": "lefs.more",
+        "label": "乐享: 更多操作",
+        "icon": "$(ellipsis)"
+      }
+    ],
+    "viewsWelcome": [
+      {
+        "view": "lefsSpaces",
+        "contents": "尚未添加知识库。\n[选择知识库](command:lefs.selectSpace)"
+      },
+      {
+        "view": "lefsSpacesSidebar",
+        "contents": "尚未添加知识库。\n[选择知识库](command:lefs.selectSpace)"
+      }
+    ],
+    "configuration": {
+      "title": "乐享知识库",
+      "properties": {
+        "lefs.chatOpenCommand": {
+          "type": "string",
+          "default": "workbench.action.chat.open",
+          "description": "打开聊天面板使用的命令 ID（用于适配不同 Chat 插件）"
+        },
+        "lefs.chatAddToChatCommand": {
+          "type": "string",
+          "default": "tencentcloud.codingcopilot.addToChat",
+          "description": "将当前文件添加到聊天的命令 ID（用于适配不同 Chat 插件）"
+        },
+        "lefs.maxOpenSpaces": {
+          "type": "number",
+          "default": 5,
+          "description": "最大同时打开的知识库数量（超过时自动关闭最久未使用的知识库，0 表示不限制）"
+        },
+        "lefs.treeDataSource": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "fs",
+            "db"
+          ],
+          "default": "auto",
+          "markdownDescription": "TreeView 数据源。`auto`: 挂载可用时读文件系统，否则回退 SQLite；`fs`: 强制文件系统；`db`: 强制 SQLite"
+        }
+      }
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "lefs.selectSpace",
+          "when": "view == lefsSpaces || view == lefsSpacesSidebar",
+          "group": "navigation@1"
+        },
+        {
+          "command": "lefs.searchKnowledge",
+          "when": "view == lefsSpaces || view == lefsSpacesSidebar",
+          "group": "navigation@2"
+        },
+        {
+          "command": "lefs.refreshSpaces",
+          "when": "view == lefsSpaces || view == lefsSpacesSidebar",
+          "group": "navigation@3"
+        },
+        {
+          "command": "lefs.copyMcpConfig",
+          "when": "view == lefsSpaces || view == lefsSpacesSidebar",
+          "group": "1_config@1"
+        },
+        {
+          "command": "lefs.cleanAllCaches",
+          "when": "view == lefsSpaces || view == lefsSpacesSidebar",
+          "group": "2_manage@1"
+        },
+        {
+          "command": "lefs.checkForUpdates",
+          "when": "view == lefsSpaces || view == lefsSpacesSidebar",
+          "group": "2_manage@2"
+        },
+        {
+          "command": "lefs.logout",
+          "when": "view == lefsSpaces || view == lefsSpacesSidebar",
+          "group": "2_manage@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "submenu": "lefs.more",
+          "when": "view == lefsSpaces || view == lefsSpacesSidebar",
+          "group": "inline"
+        },
+        {
+          "command": "lefs.fetchEntryContent",
+          "when": "(view == lefsSpaces || view == lefsSpacesSidebar) && viewItem =~ /^entry-(?!folder).*-unsynced/",
+          "group": "inline"
+        },
+        {
+          "command": "lefs.fetchFolderContents",
+          "when": "(view == lefsSpaces || view == lefsSpacesSidebar) && viewItem =~ /^entry-/",
+          "group": "inline"
+        },
+        {
+          "submenu": "lefs.more",
+          "when": "view == lefsSpaces || view == lefsSpacesSidebar",
+          "group": "9_more"
+        },
+        {
+          "command": "lefs.openSpaceInBrowser",
+          "when": "(view == lefsSpaces || view == lefsSpacesSidebar) && viewItem =~ /^space/",
+          "group": "1_open@1"
+        },
+        {
+          "command": "lefs.refreshWebdav",
+          "when": "(view == lefsSpaces || view == lefsSpacesSidebar) && viewItem =~ /^space/",
+          "group": "1_open@2"
+        },
+        {
+          "command": "lefs.openEntryInBrowser",
+          "when": "(view == lefsSpaces || view == lefsSpacesSidebar) && viewItem =~ /^entry-/",
+          "group": "1_open@1"
+        },
+        {
+          "command": "lefs.addToChat",
+          "when": "(view == lefsSpaces || view == lefsSpacesSidebar) && viewItem =~ /^(entry-|space)/",
+          "group": "2_chat@1"
+        },
+        {
+          "command": "lefs.addToCodeBuddyChat",
+          "when": "(view == lefsSpaces || view == lefsSpacesSidebar) && viewItem =~ /^(entry-|space)/",
+          "group": "2_chat@2"
+        },
+        {
+          "command": "lefs.addToCopilotChat",
+          "when": "(view == lefsSpaces || view == lefsSpacesSidebar) && viewItem =~ /^(entry-|space)/",
+          "group": "2_chat@3"
+        },
+        {
+          "command": "lefs.addToGongfengChat",
+          "when": "(view == lefsSpaces || view == lefsSpacesSidebar) && viewItem =~ /^(entry-|space)/",
+          "group": "2_chat@4"
+        },
+        {
+          "command": "lefs.fetchEntryContent",
+          "when": "(view == lefsSpaces || view == lefsSpacesSidebar) && viewItem =~ /^entry-(?!folder)/",
+          "group": "3_content@1"
+        },
+        {
+          "command": "lefs.fetchFolderContents",
+          "when": "(view == lefsSpaces || view == lefsSpacesSidebar) && viewItem =~ /^entry-/",
+          "group": "3_content@1"
+        },
+        {
+          "command": "lefs.showLog",
+          "when": "view == lefsSpaces || view == lefsSpacesSidebar",
+          "group": "9_other@99"
+        }
+      ],
+      "lefs.more": [
+        {
+          "command": "lefs.openSpaceInBrowser",
+          "when": "viewItem =~ /^space/",
+          "group": "1_open@1"
+        },
+        {
+          "command": "lefs.refreshWebdav",
+          "when": "viewItem =~ /^space/",
+          "group": "1_open@2"
+        },
+        {
+          "command": "lefs.openEntryInBrowser",
+          "when": "viewItem =~ /^entry-/",
+          "group": "1_open@1"
+        },
+        {
+          "command": "lefs.addToChat",
+          "when": "viewItem =~ /^(entry-|space)/",
+          "group": "2_chat@1"
+        },
+        {
+          "command": "lefs.addToCodeBuddyChat",
+          "when": "viewItem =~ /^(entry-|space)/",
+          "group": "2_chat@2"
+        },
+        {
+          "command": "lefs.addToCopilotChat",
+          "when": "viewItem =~ /^(entry-|space)/",
+          "group": "2_chat@3"
+        },
+        {
+          "command": "lefs.addToGongfengChat",
+          "when": "viewItem =~ /^(entry-|space)/",
+          "group": "2_chat@4"
+        },
+        {
+          "command": "lefs.fetchEntryContent",
+          "when": "viewItem =~ /^entry-(?!folder)/",
+          "group": "3_content@1"
+        },
+        {
+          "command": "lefs.fetchFolderContents",
+          "when": "viewItem =~ /^entry-/",
+          "group": "3_content@1"
+        },
+        {
+          "command": "lefs.showLog",
+          "group": "9_other@99"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "lefs.addActiveLxdocToChat",
+          "when": "resourceScheme == lxdoc",
+          "group": "navigation@1"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "lefs.addActiveLxdocToChat",
+          "when": "resourceScheme == lxdoc",
+          "group": "navigation@1"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "echo skip",
+    "compile": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "package": "node esbuild.mjs --minify",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:smoke": "node ./src/test/smoke/run-smoke.js"
+  },
+  "dependencies": {
+    "moment": "^2.30.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.3",
+    "@types/sql.js": "~1.4.9",
+    "@types/vscode": "^1.85.0",
+    "@vscode/codicons": "^0.0.44",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.7.1",
+    "esbuild": "^0.25.10",
+    "fast-glob": "^3.3.3",
+    "fzf": "^0.5.2",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.4",
+    "sql.js": "^1.14.1",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.1"
+  }
+}

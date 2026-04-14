@@ -4,17 +4,17 @@ on:
   push:
     branches: [master, main, develop]
     paths:
-      - 'openclaw/**'
+      - 'packages/openclaw/**'
       - '.github/workflows/openclaw-ci.yml'
   pull_request:
     branches: [master, main, develop]
     paths:
-      - 'openclaw/**'
+      - 'packages/openclaw/**'
       - '.github/workflows/openclaw-ci.yml'
 
 defaults:
   run:
-    working-directory: openclaw
+    working-directory: packages/openclaw
 
 permissions:
   contents: read
@@ -36,7 +36,7 @@ jobs:
         with:
           node-version: '24'
           cache: 'pnpm'
-          cache-dependency-path: openclaw/pnpm-lock.yaml
+          cache-dependency-path: packages/openclaw/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -60,7 +60,7 @@ jobs:
         with:
           node-version: '24'
           cache: 'pnpm'
-          cache-dependency-path: openclaw/pnpm-lock.yaml
+          cache-dependency-path: packages/openclaw/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -84,7 +84,7 @@ jobs:
         with:
           node-version: '24'
           cache: 'pnpm'
-          cache-dependency-path: openclaw/pnpm-lock.yaml
+          cache-dependency-path: packages/openclaw/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -96,6 +96,6 @@ jobs:
         uses: codecov/codecov-action@v4
         if: always()
         with:
-          directory: openclaw/coverage
+          directory: packages/openclaw/coverage
           flags: openclaw
           fail_ci_if_error: false

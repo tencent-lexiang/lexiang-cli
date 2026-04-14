@@ -3,11 +3,12 @@ target
 *.rs.bk
 Cargo.lock.bak
 
-# Node.js (openclaw/)
+# Node.js
 node_modules/
 dist/
 *.tsbuildinfo
 .eslintcache
+*.vsix
 
 # IDE
 .idea/
@@ -34,3 +35,5 @@ pnpm-debug.log*
 # Agent
 docs/plans.worktrees/
 .worktrees/
+openspec/specs
+openspec/changes

@@ -1,0 +1,61 @@
+name: VS Code Extension Publish
+
+on:
+  push:
+    tags:
+      - 'vscode-v*'
+
+defaults:
+  run:
+    working-directory: packages/app-vscode
+
+jobs:
+  publish:
+    name: Publish to Marketplace
+    runs-on: ubuntu-latest
+    environment: vscode-release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: packages/app-vscode/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (minify)
+        run: node esbuild.mjs --minify
+
+      - name: Package VSIX
+        run: npx vsce package --no-dependencies
+
+      - name: Extract version
+        id: version
+        shell: bash
+        run: |
+          version="${GITHUB_REF#refs/tags/vscode-v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to VS Code Marketplace
+        run: npx vsce publish --no-dependencies
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Publish to Open VSX Registry
+        run: npx ovsx publish --no-dependencies
+        if: env.OVSX_PAT != ''
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lefs-vscode-${{ steps.version.outputs.version }}
+          path: packages/app-vscode/*.vsix
+          if-no-files-found: error
