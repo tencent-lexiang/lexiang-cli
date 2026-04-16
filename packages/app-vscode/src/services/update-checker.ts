@@ -13,7 +13,7 @@ import * as vscode from 'vscode';
 
 // ── 常量 ──────────────────────────────────────────────────────────────────
 
-const GITHUB_OWNER = 'nicholasniu';
+const GITHUB_OWNER = 'tencent-lexiang';
 const GITHUB_REPO = 'lexiang-cli';
 const GITHUB_RELEASES_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases?per_page=20`;
 const VSCODE_TAG_PREFIX = 'vscode-v';
