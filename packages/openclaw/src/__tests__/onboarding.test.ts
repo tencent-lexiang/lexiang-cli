@@ -11,9 +11,14 @@ vi.mock('../cli.js', () => ({
   isLxAvailable: vi.fn(),
   downloadLxBinary: vi.fn(),
   execLx: vi.fn(),
+  getManualInstallHelp: vi.fn(() => ({
+    command: 'cargo install lexiang-cli',
+    repoUrl: 'https://github.com/test/repo',
+    releasesUrl: 'https://github.com/test/repo/releases',
+  })),
 }));
 
-import { isLxAvailable, downloadLxBinary, execLx } from '../cli.js';
+import { isLxAvailable, downloadLxBinary, execLx, getManualInstallHelp } from '../cli.js';
 import { lexiangOnboardingAdapter } from '../onboarding.js';
 
 describe('Onboarding Adapter', () => {
@@ -78,7 +83,7 @@ describe('Onboarding Adapter', () => {
   });
 
   describe('configure', () => {
-    it('should install CLI when not available', async () => {
+    it('should auto-download CLI when not available', async () => {
       vi.mocked(isLxAvailable).mockReturnValue(false);
       vi.mocked(downloadLxBinary).mockResolvedValue('/path/to/lx');
       vi.mocked(execLx).mockResolvedValue({
@@ -86,10 +91,15 @@ describe('Onboarding Adapter', () => {
         stderr: '',
         exitCode: 0,
       });
+      vi.mocked(getManualInstallHelp).mockReturnValue({
+        command: 'cargo install lexiang-cli',
+        repoUrl: 'https://github.com/test/repo',
+        releasesUrl: 'https://github.com/test/repo/releases',
+      });
 
       const mockPrompter = {
         note: vi.fn(),
-        confirm: vi.fn().mockResolvedValue(true),
+        confirm: vi.fn(),
         text: vi.fn().mockResolvedValue('eyJtest-token'),
         select: vi.fn(),
       };
@@ -100,6 +110,7 @@ describe('Onboarding Adapter', () => {
       });
 
       expect(downloadLxBinary).toHaveBeenCalled();
+      expect(mockPrompter.confirm).not.toHaveBeenCalled();
       expect(result.success).toBe(true);
     });
 

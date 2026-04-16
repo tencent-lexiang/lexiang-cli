@@ -13,6 +13,10 @@ vi.mock('../cli.js', () => ({
   downloadLxBinary: vi.fn(),
   execLx: vi.fn(),
   execLxJson: vi.fn(),
+  getManualInstallHelp: vi.fn(() => ({
+    command: 'cargo install lexiang-cli',
+    releasesUrl: 'https://github.com/test/repo/releases',
+  })),
 }));
 
 vi.mock('../schema.js', () => ({
@@ -21,7 +25,7 @@ vi.mock('../schema.js', () => ({
   registerCoreTools: vi.fn(),
 }));
 
-import { isLxAvailable, getLxBinary, downloadLxBinary } from '../cli.js';
+import { isLxAvailable, getLxBinary, downloadLxBinary, getManualInstallHelp } from '../cli.js';
 import { loadCachedSchema, registerToolsFromSchema, registerCoreTools } from '../schema.js';
 
 describe('Plugin Registration', () => {
@@ -230,6 +234,20 @@ describe('lx-status Tool', () => {
     expect(downloadLxBinary).toHaveBeenCalled();
     expect(result.details.success).toBe(true);
     expect(result.details.installed).toBe(true);
+  });
+
+  it('should include GitHub Releases link when install fails', async () => {
+    vi.mocked(downloadLxBinary).mockRejectedValue(new Error('download failed'));
+    vi.mocked(getManualInstallHelp).mockReturnValue({
+      command: 'cargo install lexiang-cli',
+      releasesUrl: 'https://github.com/test/repo/releases',
+    });
+
+    const result = await statusExecute('id', { action: 'install' });
+
+    expect(result.details.success).toBe(false);
+    expect(result.details.hint).toContain('cargo install lexiang-cli');
+    expect(result.details.hint).toContain('https://github.com/test/repo/releases');
   });
 
   it('should sync schema', async () => {

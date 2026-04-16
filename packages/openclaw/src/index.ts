@@ -9,7 +9,7 @@
 
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 
-import { execLx, getLxBinary, isLxAvailable, downloadLxBinary } from './cli.js';
+import { execLx, getLxBinary, isLxAvailable, downloadLxBinary, getManualInstallHelp } from './cli.js';
 import { lexiangOnboardingAdapter } from './onboarding.js';
 import { loadCachedSchema, registerToolsFromSchema, registerCoreTools } from './schema.js';
 import { formatToolResult } from './tools/helpers.js';
@@ -73,10 +73,16 @@ const plugin = {
               version: result.stdout.trim(),
             });
           } catch (err) {
+            const manualInstall = getManualInstallHelp();
+            const hintParts = [`Manual install: ${manualInstall.command}`];
+            if (manualInstall.releasesUrl) {
+              hintParts.push(`GitHub Releases: ${manualInstall.releasesUrl}`);
+            }
+
             return formatToolResult({
               success: false,
               error: String(err),
-              hint: 'Manual install: cargo install lexiang-cli',
+              hint: hintParts.join(' | '),
             });
           }
         }

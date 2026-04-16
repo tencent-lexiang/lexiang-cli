@@ -6,7 +6,7 @@
  * 2. 配置 Access Token
  */
 
-import { isLxAvailable, downloadLxBinary, execLx } from './cli.js';
+import { isLxAvailable, downloadLxBinary, execLx, getManualInstallHelp } from './cli.js';
 
 // ---------------------------------------------------------------------------
 // Types (inline to avoid SDK version issues)
@@ -140,40 +140,30 @@ export const lexiangOnboardingAdapter: ChannelOnboardingAdapter = {
         '安装 Lexiang CLI',
       );
 
-      const shouldInstall = await prompter.confirm({
-        message: '是否自动下载安装 lx CLI？',
-        initialValue: true,
-      });
+      try {
+        console.log('正在下载 lx CLI...');
+        const binaryPath = await downloadLxBinary();
+        console.log(`✓ 已安装到 ${binaryPath}`);
 
-      if (shouldInstall) {
-        try {
-          console.log('正在下载 lx CLI...');
-          const binaryPath = await downloadLxBinary();
-          console.log(`✓ 已安装到 ${binaryPath}`);
-
-          const version = await getLxVersion();
-          if (version) {
-            console.log(`  版本: ${version}`);
-          }
-        } catch (err) {
-          await prompter.note(
-            [
-              `自动安装失败: ${err}`,
-              '',
-              '请手动安装：',
-              '  cargo install lexiang-cli',
-              '',
-              '或从 GitHub Releases 下载预编译版本。',
-            ].join('\n'),
-            '安装失败',
-          );
-          return { success: false, cfg: next as never };
+        const version = await getLxVersion();
+        if (version) {
+          console.log(`  版本: ${version}`);
         }
-      } else {
+      } catch (err) {
+        const manualInstall = getManualInstallHelp();
+
         await prompter.note(
-          '跳过 CLI 安装。请稍后手动安装 lx CLI 后再使用乐享相关功能。',
-          '提示',
+          [
+            `自动安装失败: ${err}`,
+            '',
+            '请手动安装：',
+            `  ${manualInstall.command}`,
+            ...(manualInstall.repoUrl ? ['', `GitHub 仓库：${manualInstall.repoUrl}`] : []),
+            ...(manualInstall.releasesUrl ? [`GitHub Releases：${manualInstall.releasesUrl}`] : []),
+          ].join('\n'),
+          '安装失败',
         );
+        return { success: false, cfg: next as never };
       }
     } else {
       const version = await getLxVersion();

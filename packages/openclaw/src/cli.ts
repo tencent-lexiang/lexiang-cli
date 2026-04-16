@@ -40,6 +40,12 @@ interface CliConfigFile {
   version?: string;
 }
 
+export interface ManualInstallHelp {
+  command: string;
+  repoUrl?: string;
+  releasesUrl?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -78,6 +84,17 @@ function loadCliConfig(): CliConfigFile {
   } catch {
     return { repo: '' };
   }
+}
+
+export function getManualInstallHelp(config: CliConfig = {}): ManualInstallHelp {
+  const cliConfig = loadCliConfig();
+  const repo = config.repo ?? cliConfig.repo;
+
+  return {
+    command: 'cargo install lexiang-cli',
+    repoUrl: repo ? `https://github.com/${repo}` : undefined,
+    releasesUrl: repo ? `https://github.com/${repo}/releases` : undefined,
+  };
 }
 
 // ---------------------------------------------------------------------------
