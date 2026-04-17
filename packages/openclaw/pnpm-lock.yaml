@@ -10,7 +10,7 @@ devDependencies:
     version: 10.0.1(eslint@10.1.0)
   '@types/node':
     specifier: ^20.0.0
-    version: 20.19.37
+    version: 20.19.39
   '@vitest/coverage-v8':
     specifier: ^3.0.0
     version: 3.2.4(vitest@3.2.4)
@@ -22,7 +22,7 @@ devDependencies:
     version: 17.4.0
   openclaw:
     specifier: 2026.4.12
-    version: 2026.4.12(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)(@napi-rs/canvas@0.1.97)(@types/express@5.0.6)(apache-arrow@18.1.0)(typescript@5.9.3)
+    version: 2026.4.12(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(@napi-rs/canvas@0.1.98)(@types/express@5.0.6)(apache-arrow@18.1.0)(typescript@5.9.3)
   tsx:
     specifier: ^4.0.0
     version: 4.21.0
@@ -34,7 +34,7 @@ devDependencies:
     version: 8.58.0(eslint@10.1.0)(typescript@5.9.3)
   vitest:
     specifier: ^3.0.0
-    version: 3.2.4(@types/node@20.19.37)(tsx@4.21.0)
+    version: 3.2.4(@types/node@20.19.39)(tsx@4.21.0)
 
 packages:
 
@@ -776,14 +776,14 @@ packages:
     requiresBuild: true
     dev: true
 
-  /@buape/carbon@0.15.0(@discordjs/opus@0.10.0)(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)(hono@4.12.12)(opusscript@0.1.1):
+  /@buape/carbon@0.15.0(@discordjs/opus@0.10.0)(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(hono@4.12.12)(opusscript@0.1.1):
     resolution: {integrity: sha512-3V3XXIqtBzU5vSpCp4avX0RKbYyCIh493XDS/nRJvL7Num/9gB8Ylhd1ywt39gBGaNJScJW1hoWxRyN6Il6thw==}
     dependencies:
       '@types/node': 25.6.0
       discord-api-types: 0.38.45
     optionalDependencies:
       '@cloudflare/workers-types': 4.20260405.1
-      '@discordjs/voice': 0.19.2(@discordjs/opus@0.10.0)(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)(opusscript@0.1.1)
+      '@discordjs/voice': 0.19.2(@discordjs/opus@0.10.0)(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(opusscript@0.1.1)
       '@hono/node-server': 1.19.13(hono@4.12.12)
       '@types/bun': 1.3.11
       '@types/ws': 8.18.1
@@ -855,12 +855,12 @@ packages:
     dev: true
     optional: true
 
-  /@discordjs/voice@0.19.2(@discordjs/opus@0.10.0)(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)(opusscript@0.1.1):
+  /@discordjs/voice@0.19.2(@discordjs/opus@0.10.0)(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(opusscript@0.1.1):
     resolution: {integrity: sha512-3yJ255e4ag3wfZu/DSxeOZK1UtnqNxnspmLaQetGT0pDkThNZoHs+Zg6dgZZ19JEVomXygvfHn9lNpICZuYtEA==}
     engines: {node: '>=22.12.0'}
     requiresBuild: true
     dependencies:
-      '@snazzah/davey': 0.1.11(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)
+      '@snazzah/davey': 0.1.11(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
       '@types/ws': 8.18.1
       discord-api-types: 0.38.46
       prism-media: 1.3.5(@discordjs/opus@0.10.0)(opusscript@0.1.1)
@@ -878,16 +878,16 @@ packages:
     dev: true
     optional: true
 
-  /@emnapi/core@1.9.2:
-    resolution: {integrity: sha512-UC+ZhH3XtczQYfOlu3lNEkdW/p4dsJ1r/bP7H8+rhao3TTTMO1ATq/4DdIi23XuGoFY+Cz0JmCbdVl0hz9jZcA==}
+  /@emnapi/core@1.10.0:
+    resolution: {integrity: sha512-yq6OkJ4p82CAfPl0u9mQebQHKPJkY7WrIuk205cTYnYe+k2Z8YBh11FrbRG/H6ihirqcacOgl2BIO8oyMQLeXw==}
     dependencies:
       '@emnapi/wasi-threads': 1.2.1
       tslib: 2.8.1
     dev: true
     optional: true
 
-  /@emnapi/runtime@1.9.2:
-    resolution: {integrity: sha512-3U4+MIWHImeyu1wnmVygh5WlgfYDtyf0k8AbLhMFxOipihf6nrWC4syIm/SwEeec0mNSafiiNnMJwbza/Is6Lw==}
+  /@emnapi/runtime@1.10.0:
+    resolution: {integrity: sha512-ewvYlk86xUoGI0zQRNq/mC+16R1QeDlKQy21Ki3oSYXNgLb45GV1P6A0M+/s6nyCuNDqe5VpaY84BzXGwVbwFA==}
     requiresBuild: true
     dependencies:
       tslib: 2.8.1
@@ -1216,7 +1216,7 @@ packages:
       '@modelcontextprotocol/sdk': 1.29.0(zod@4.3.6)
       google-auth-library: 10.6.2
       p-retry: 4.6.2
-      protobufjs: 7.5.4
+      protobufjs: 7.5.5
       ws: 8.20.0
     transitivePeerDependencies:
       - bufferutil
@@ -1493,7 +1493,7 @@ packages:
     cpu: [wasm32]
     requiresBuild: true
     dependencies:
-      '@emnapi/runtime': 1.9.2
+      '@emnapi/runtime': 1.10.0
     dev: true
     optional: true
 
@@ -1944,7 +1944,6 @@ packages:
   /@lancedb/lancedb@0.27.2(apache-arrow@18.1.0):
     resolution: {integrity: sha512-JQpZHV5KzUzDI3flYCjtZcfHlEbL8lM54E0NT+jrRYe29aKYegfavvPsAsuZp0VdcMwFMZcpMkaBhjQMo/fwvg==}
     engines: {node: '>= 18'}
-    cpu: [x64, arm64]
     os: [darwin, linux, win32]
     peerDependencies:
       apache-arrow: '>=15.0.0 <=18.1.0'
@@ -1968,7 +1967,7 @@ packages:
       lodash.identity: 3.0.0
       lodash.merge: 4.6.2
       lodash.pickby: 4.6.0
-      protobufjs: 7.5.4
+      protobufjs: 7.5.5
       qs: 6.15.1
       ws: 8.20.0
     transitivePeerDependencies:
@@ -2248,7 +2247,7 @@ packages:
       marked: 15.0.12
       mime-types: 3.0.2
     optionalDependencies:
-      koffi: 2.15.6
+      koffi: 2.16.0
     dev: true
 
   /@matrix-org/matrix-sdk-crypto-nodejs@0.4.0:
@@ -2315,8 +2314,8 @@ packages:
     engines: {node: '>=14.0.0'}
     dev: true
 
-  /@napi-rs/canvas-android-arm64@0.1.97:
-    resolution: {integrity: sha512-V1c/WVw+NzH8vk7ZK/O8/nyBSCQimU8sfMsB/9qeSvdkGKNU7+mxy/bIF0gTgeBFmHpj30S4E9WHMSrxXGQuVQ==}
+  /@napi-rs/canvas-android-arm64@0.1.98:
+    resolution: {integrity: sha512-O45Ifr0WZJUrSyg0QgB+67TiC0zYBRkBK+d43ZV4JtlwH3XttiVxLvlxEeULiH5y1MSELruspF0bjF6xXwJNPQ==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [android]
@@ -2324,8 +2323,8 @@ packages:
     dev: true
     optional: true
 
-  /@napi-rs/canvas-darwin-arm64@0.1.97:
-    resolution: {integrity: sha512-ok+SCEF4YejcxuJ9Rm+WWunHHpf2HmiPxfz6z1a/NFQECGXtsY7A4B8XocK1LmT1D7P174MzwPF9Wy3AUAwEPw==}
+  /@napi-rs/canvas-darwin-arm64@0.1.98:
+    resolution: {integrity: sha512-1b/nQhw6Isdv14JokUqat+i5wrAYD+ce3egiotedBGRUjVxYSj4s2uQCh2bFsyX5/9A5iTKVGsWoQhFft+j7Lg==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [darwin]
@@ -2333,8 +2332,8 @@ packages:
     dev: true
     optional: true
 
-  /@napi-rs/canvas-darwin-x64@0.1.97:
-    resolution: {integrity: sha512-PUP6e6/UGlclUvAQNnuXCcnkpdUou6VYZfQOQxExLp86epOylmiwLkqXIvpFmjoTEDmPmXrI+coL/9EFU1gKPA==}
+  /@napi-rs/canvas-darwin-x64@0.1.98:
+    resolution: {integrity: sha512-oefzfBM8mwnyYp6S+yNXwjCoLdkOalFG24mssHgvrJDS0FulOryyI35Q7GdJGmrzuL4oo1XW3ZTOcTBLdJ8Zkg==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [darwin]
@@ -2342,8 +2341,8 @@ packages:
     dev: true
     optional: true
 
-  /@napi-rs/canvas-linux-arm-gnueabihf@0.1.97:
-    resolution: {integrity: sha512-XyXH2L/cic8eTNtbrXCcvqHtMX/nEOxN18+7rMrAM2XtLYC/EB5s0wnO1FsLMWmK+04ZSLN9FBGipo7kpIkcOw==}
+  /@napi-rs/canvas-linux-arm-gnueabihf@0.1.98:
+    resolution: {integrity: sha512-NDH5QXGmf8wlo5yhijCNGVFiJk7an5GvHwb2LHyfLQWY/6/S48i5+YtY6FPqPVVCUckNGudYOfXEJnb3/FiJGQ==}
     engines: {node: '>= 10'}
     cpu: [arm]
     os: [linux]
@@ -2351,8 +2350,8 @@ packages:
     dev: true
     optional: true
 
-  /@napi-rs/canvas-linux-arm64-gnu@0.1.97:
-    resolution: {integrity: sha512-Kuq/M3djq0K8ktgz6nPlK7Ne5d4uWeDxPpyKWOjWDK2RIOhHVtLtyLiJw2fuldw7Vn4mhw05EZXCEr4Q76rs9w==}
+  /@napi-rs/canvas-linux-arm64-gnu@0.1.98:
+    resolution: {integrity: sha512-KBLLM6tu1xs80LSAqdSLBKkgct0S23MCEf/aq8yxzg5imAceqp1ulKeELgWaYm27MgpUhm3Q7jmegX12FfphwA==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
@@ -2360,8 +2359,8 @@ packages:
     dev: true
     optional: true
 
-  /@napi-rs/canvas-linux-arm64-musl@0.1.97:
-    resolution: {integrity: sha512-kKmSkQVnWeqg7qdsiXvYxKhAFuHz3tkBjW/zyQv5YKUPhotpaVhpBGv5LqCngzyuRV85SXoe+OFj+Tv0a0QXkQ==}
+  /@napi-rs/canvas-linux-arm64-musl@0.1.98:
+    resolution: {integrity: sha512-mfMNhjN5zDcJafqQ6sHj4Tc3YMTRxP5UA3MHtp/ssytBR/k6XO0x+1IIPtscnUKwha+ql1++WjDCGEgqu8OfWQ==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
@@ -2369,8 +2368,8 @@ packages:
     dev: true
     optional: true
 
-  /@napi-rs/canvas-linux-riscv64-gnu@0.1.97:
-    resolution: {integrity: sha512-Jc7I3A51jnEOIAXeLsN/M/+Z28LUeakcsXs07FLq9prXc0eYOtVwsDEv913Gr+06IRo34gJJVgT0TXvmz+N2VA==}
+  /@napi-rs/canvas-linux-riscv64-gnu@0.1.98:
+    resolution: {integrity: sha512-nfW8esrcaeuhrO3qGA5cwuyk4Ak6cn2eB0LtEYtqROIl+fz06CNGNCU0M95+Tspw5ZgfSbc98SaigT5r5B3LVQ==}
     engines: {node: '>= 10'}
     cpu: [riscv64]
     os: [linux]
@@ -2378,8 +2377,8 @@ packages:
     dev: true
     optional: true
 
-  /@napi-rs/canvas-linux-x64-gnu@0.1.97:
-    resolution: {integrity: sha512-iDUBe7AilfuBSRbSa8/IGX38Mf+iCSBqoVKLSQ5XaY2JLOaqz1TVyPFEyIck7wT6mRQhQt5sN6ogfjIDfi74tg==}
+  /@napi-rs/canvas-linux-x64-gnu@0.1.98:
+    resolution: {integrity: sha512-318UT8j6Gro2bTjtutjQXHWp9SLTNw+WRS4wQ6XIRPAyzBGnGHg7x2ndD+oqkPrrSRIbYLA5WoBcCasaF7lSTQ==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
@@ -2387,8 +2386,8 @@ packages:
     dev: true
     optional: true
 
-  /@napi-rs/canvas-linux-x64-musl@0.1.97:
-    resolution: {integrity: sha512-AKLFd/v0Z5fvgqBDqhvqtAdx+fHMJ5t9JcUNKq4FIZ5WH+iegGm8HPdj00NFlCSnm83Fp3Ln8I2f7uq1aIiWaA==}
+  /@napi-rs/canvas-linux-x64-musl@0.1.98:
+    resolution: {integrity: sha512-0vZhI74UxnA4VqlW4UvM0dFRrjE1RLEe/OXSBjzytGIxV+yOG4exlrhGoIpAQaIpQQQXMCdb1EmbvPC1k9vEqQ==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
@@ -2396,8 +2395,8 @@ packages:
     dev: true
     optional: true
 
-  /@napi-rs/canvas-win32-arm64-msvc@0.1.97:
-    resolution: {integrity: sha512-u883Yr6A6fO7Vpsy9YE4FVCIxzzo5sO+7pIUjjoDLjS3vQaNMkVzx5bdIpEL+ob+gU88WDK4VcxYMZ6nmnoX9A==}
+  /@napi-rs/canvas-win32-arm64-msvc@0.1.98:
+    resolution: {integrity: sha512-oiC/IxgFEEVcZ7VH7JXXlmgsqRvmFb57PIQ4gQck35IKFZCNUvdNCcN3OeoLP7Hpf5160MWJf9jj/+E5V0bSvw==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [win32]
@@ -2405,8 +2404,8 @@ packages:
     dev: true
     optional: true
 
-  /@napi-rs/canvas-win32-x64-msvc@0.1.97:
-    resolution: {integrity: sha512-sWtD2EE3fV0IzN+iiQUqr/Q1SwqWhs2O1FKItFlxtdDkikpEj5g7DKQpY3x55H/MAOnL8iomnlk3mcEeGiUMoQ==}
+  /@napi-rs/canvas-win32-x64-msvc@0.1.98:
+    resolution: {integrity: sha512-ZqstKAJBSyZetU8udUvBQWPlGN9buawFvjuo9mgCAxzbOoJAgXX39ihec/nn42T5Vb6/qyn45eTimx5ND9kMEw==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [win32]
@@ -2414,32 +2413,32 @@ packages:
     dev: true
     optional: true
 
-  /@napi-rs/canvas@0.1.97:
-    resolution: {integrity: sha512-8cFniXvrIEnVwuNSRCW9wirRZbHvrD3JVujdS2P5n5xiJZNZMOZcfOvJ1pb66c7jXMKHHglJEDVJGbm8XWFcXQ==}
+  /@napi-rs/canvas@0.1.98:
+    resolution: {integrity: sha512-WDg3lxYMqlrg49sDVUlrHVfIEPsd5AjYDRuGD6Fu82K5agJx0UnWA+l5qd53GNLRiMN2WhOw7FLR+Er5QB/0SA==}
     engines: {node: '>= 10'}
     optionalDependencies:
-      '@napi-rs/canvas-android-arm64': 0.1.97
-      '@napi-rs/canvas-darwin-arm64': 0.1.97
-      '@napi-rs/canvas-darwin-x64': 0.1.97
-      '@napi-rs/canvas-linux-arm-gnueabihf': 0.1.97
-      '@napi-rs/canvas-linux-arm64-gnu': 0.1.97
-      '@napi-rs/canvas-linux-arm64-musl': 0.1.97
-      '@napi-rs/canvas-linux-riscv64-gnu': 0.1.97
-      '@napi-rs/canvas-linux-x64-gnu': 0.1.97
-      '@napi-rs/canvas-linux-x64-musl': 0.1.97
-      '@napi-rs/canvas-win32-arm64-msvc': 0.1.97
-      '@napi-rs/canvas-win32-x64-msvc': 0.1.97
+      '@napi-rs/canvas-android-arm64': 0.1.98
+      '@napi-rs/canvas-darwin-arm64': 0.1.98
+      '@napi-rs/canvas-darwin-x64': 0.1.98
+      '@napi-rs/canvas-linux-arm-gnueabihf': 0.1.98
+      '@napi-rs/canvas-linux-arm64-gnu': 0.1.98
+      '@napi-rs/canvas-linux-arm64-musl': 0.1.98
+      '@napi-rs/canvas-linux-riscv64-gnu': 0.1.98
+      '@napi-rs/canvas-linux-x64-gnu': 0.1.98
+      '@napi-rs/canvas-linux-x64-musl': 0.1.98
+      '@napi-rs/canvas-win32-arm64-msvc': 0.1.98
+      '@napi-rs/canvas-win32-x64-msvc': 0.1.98
     dev: true
 
-  /@napi-rs/wasm-runtime@1.1.3(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2):
-    resolution: {integrity: sha512-xK9sGVbJWYb08+mTJt3/YV24WxvxpXcXtP6B172paPZ+Ts69Re9dAr7lKwJoeIx8OoeuimEiRZ7umkiUVClmmQ==}
+  /@napi-rs/wasm-runtime@1.1.4(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0):
+    resolution: {integrity: sha512-3NQNNgA1YSlJb/kMH1ildASP9HW7/7kYnRI2szWJaofaS1hWmbGI4H+d3+22aGzXXN9IJ+n+GiFVcGipJP18ow==}
     requiresBuild: true
     peerDependencies:
       '@emnapi/core': ^1.7.1
       '@emnapi/runtime': ^1.7.1
     dependencies:
-      '@emnapi/core': 1.9.2
-      '@emnapi/runtime': 1.9.2
+      '@emnapi/core': 1.10.0
+      '@emnapi/runtime': 1.10.0
       '@tybys/wasm-util': 0.10.1
     dev: true
     optional: true
@@ -2766,7 +2765,7 @@ packages:
     resolution: {integrity: sha512-6cmdPrV/RYfd2U0mDGiMK8S7OJqpCTm7enMLRR3edccsPX8j7zXTLnaEF4fhxxJJTAIOil6+qZrnUPTuaLvwrQ==}
     engines: {node: '>= 18', npm: '>= 8.6.0'}
     dependencies:
-      '@types/node': 20.19.37
+      '@types/node': 20.19.39
     dev: true
 
   /@slack/oauth@3.0.5:
@@ -2776,7 +2775,7 @@ packages:
       '@slack/logger': 4.0.1
       '@slack/web-api': 7.15.1
       '@types/jsonwebtoken': 9.0.10
-      '@types/node': 20.19.37
+      '@types/node': 20.19.39
       jsonwebtoken: 9.0.3
     transitivePeerDependencies:
       - debug
@@ -2788,7 +2787,7 @@ packages:
     dependencies:
       '@slack/logger': 4.0.1
       '@slack/web-api': 7.15.1
-      '@types/node': 20.19.37
+      '@types/node': 20.19.39
       '@types/ws': 8.18.1
       eventemitter3: 5.0.4
       ws: 8.20.0
@@ -2809,7 +2808,7 @@ packages:
     dependencies:
       '@slack/logger': 4.0.1
       '@slack/types': 2.20.1
-      '@types/node': 20.19.37
+      '@types/node': 20.19.39
       '@types/retry': 0.12.0
       axios: 1.15.0
       eventemitter3: 5.0.4
@@ -3354,13 +3353,13 @@ packages:
     dev: true
     optional: true
 
-  /@snazzah/davey-wasm32-wasi@0.1.11(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2):
+  /@snazzah/davey-wasm32-wasi@0.1.11(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0):
     resolution: {integrity: sha512-rKOwZ/0J8lp+4VEyOdMDBRP9KR+PksZpa9V1Qn0veMzy4FqTVKthkxwGqewheFe0SFg9fdvt798l/PBFrfDeZw==}
     engines: {node: '>=14.0.0'}
     cpu: [wasm32]
     requiresBuild: true
     dependencies:
-      '@napi-rs/wasm-runtime': 1.1.3(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)
+      '@napi-rs/wasm-runtime': 1.1.4(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
     transitivePeerDependencies:
       - '@emnapi/core'
       - '@emnapi/runtime'
@@ -3394,7 +3393,7 @@ packages:
     dev: true
     optional: true
 
-  /@snazzah/davey@0.1.11(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2):
+  /@snazzah/davey@0.1.11(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0):
     resolution: {integrity: sha512-oBN+msHzPnm1M5DDx3wVD7iBwpNXFUtkh2MrAbUJu0OhKjliLChi28hq++mu1+qdMpAVQO5JKAvQQxYVbyneiw==}
     engines: {node: '>= 10'}
     requiresBuild: true
@@ -3409,7 +3408,7 @@ packages:
       '@snazzah/davey-linux-arm64-musl': 0.1.11
       '@snazzah/davey-linux-x64-gnu': 0.1.11
       '@snazzah/davey-linux-x64-musl': 0.1.11
-      '@snazzah/davey-wasm32-wasi': 0.1.11(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)
+      '@snazzah/davey-wasm32-wasi': 0.1.11(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
       '@snazzah/davey-win32-arm64-msvc': 0.1.11
       '@snazzah/davey-win32-ia32-msvc': 0.1.11
       '@snazzah/davey-win32-x64-msvc': 0.1.11
@@ -3462,7 +3461,7 @@ packages:
     resolution: {integrity: sha512-HLFeCYgz89uk22N5Qg3dvGvsv46B8GLvKKo1zKG4NybA8U2DiEO3w9lqGg29t/tfLRJpJ6iQxnVw4OnB7MoM9g==}
     dependencies:
       '@types/connect': 3.4.38
-      '@types/node': 20.19.37
+      '@types/node': 20.19.39
     dev: true
 
   /@types/bun@1.3.11:
@@ -3491,7 +3490,7 @@ packages:
   /@types/connect@3.4.38:
     resolution: {integrity: sha512-K6uROf1LD88uDQqJCktA4yzL1YYAK6NgfsI0v/mTgyPKWsX1CnJ0XPSDhViejru1GcRkLWb8RlzFYJRqGUbaug==}
     dependencies:
-      '@types/node': 20.19.37
+      '@types/node': 20.19.39
     dev: true
 
   /@types/deep-eql@4.0.2:
@@ -3513,7 +3512,7 @@ packages:
   /@types/express-serve-static-core@5.1.1:
     resolution: {integrity: sha512-v4zIMr/cX7/d2BpAEX3KNKL/JrT1s43s96lLvvdTmza1oEvDudCqK9aF/djc/SWgy8Yh0h30TZx5VpzqFCxk5A==}
     dependencies:
-      '@types/node': 20.19.37
+      '@types/node': 20.19.39
       '@types/qs': 6.15.0
       '@types/range-parser': 1.2.7
       '@types/send': 1.2.1
@@ -3539,7 +3538,7 @@ packages:
     resolution: {integrity: sha512-asx5hIG9Qmf/1oStypjanR7iKTv0gXQ1Ov/jfrX6kS/EO0OFni8orbmGCn0672NHR3kXHwpAwR+B368ZGN/2rA==}
     dependencies:
       '@types/ms': 2.1.0
-      '@types/node': 20.19.37
+      '@types/node': 20.19.39
     dev: true
 
   /@types/mime-types@2.1.4:
@@ -3554,8 +3553,8 @@ packages:
     resolution: {integrity: sha512-QpLcX9ZSsq3YYUUnD3nFDY8H7wctAhQj/TFKL8Ya8v5fMm3CFXxo8zStsLAl780ltoYoo1WvKUVGBQK+1ifr7g==}
     dev: true
 
-  /@types/node@20.19.37:
-    resolution: {integrity: sha512-8kzdPJ3FsNsVIurqBs7oodNnCEVbni9yUEkaHbgptDACOPW04jimGagZ51E6+lXUwJjgnBw+hyko/lkFWCldqw==}
+  /@types/node@20.19.39:
+    resolution: {integrity: sha512-orrrD74MBUyK8jOAD/r0+lfa1I2MO6I+vAkmAWzMYbCcgrN4lCrmK52gRFQq/JRxfYPfonkr4b0jcY7Olqdqbw==}
     dependencies:
       undici-types: 6.21.0
     dev: true
@@ -3587,27 +3586,27 @@ packages:
   /@types/send@1.2.1:
     resolution: {integrity: sha512-arsCikDvlU99zl1g69TcAB3mzZPpxgw0UQnaHeC1Nwb015xp8bknZv5rIfri9xTOcMuaVgvabfIRA7PSZVuZIQ==}
     dependencies:
-      '@types/node': 20.19.37
+      '@types/node': 20.19.39
     dev: true
 
   /@types/serve-static@2.2.0:
     resolution: {integrity: sha512-8mam4H1NHLtu7nmtalF7eyBH14QyOASmcxHhSfEoRyr0nP/YdoesEtU+uSRvMe96TW/HPTtkoKqQLl53N7UXMQ==}
     dependencies:
       '@types/http-errors': 2.0.5
-      '@types/node': 20.19.37
+      '@types/node': 20.19.39
     dev: true
 
   /@types/ws@8.18.1:
     resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
     dependencies:
-      '@types/node': 20.19.37
+      '@types/node': 20.19.39
     dev: true
 
   /@types/yauzl@2.10.3:
     resolution: {integrity: sha512-oJoftv0LSuaDZE3Le4DbKX+KS9G36NzOeSap90UIK0yMA/NhKJhqlSGtNDORNRaIbQfzjXDrQa0ytJ6mNRGz/Q==}
     requiresBuild: true
     dependencies:
-      '@types/node': 20.19.37
+      '@types/node': 20.19.39
     dev: true
     optional: true
 
@@ -3773,7 +3772,7 @@ packages:
       std-env: 3.10.0
       test-exclude: 7.0.2
       tinyrainbow: 2.0.0
-      vitest: 3.2.4(@types/node@20.19.37)(tsx@4.21.0)
+      vitest: 3.2.4(@types/node@20.19.39)(tsx@4.21.0)
     transitivePeerDependencies:
       - supports-color
     dev: true
@@ -3802,7 +3801,7 @@ packages:
       '@vitest/spy': 3.2.4
       estree-walker: 3.0.3
       magic-string: 0.30.21
-      vite: 7.3.2(@types/node@20.19.37)(tsx@4.21.0)
+      vite: 7.3.2(@types/node@20.19.39)(tsx@4.21.0)
     dev: true
 
   /@vitest/pretty-format@3.2.4:
@@ -3975,7 +3974,7 @@ packages:
       '@swc/helpers': 0.5.21
       '@types/command-line-args': 5.2.3
       '@types/command-line-usage': 5.0.4
-      '@types/node': 20.19.37
+      '@types/node': 20.19.39
       command-line-args: 5.2.1
       command-line-usage: 7.0.4
       flatbuffers: 24.12.23
@@ -4187,7 +4186,7 @@ packages:
     resolution: {integrity: sha512-1KGPpoxQWl9f6wcZh57LvrPIInQMn2TQ7jsgxqpRzg+l0QPOFvJVH7HmvHo/AiPgwXy+/Thf6Ov3EdVn1vOabg==}
     requiresBuild: true
     dependencies:
-      '@types/node': 20.19.37
+      '@types/node': 20.19.39
     dev: true
     optional: true
 
@@ -5847,8 +5846,8 @@ packages:
       json-buffer: 3.0.1
     dev: true
 
-  /koffi@2.15.6:
-    resolution: {integrity: sha512-WQBpM5uo74UQ17UpsFN+PUOrQQg4/nYdey4SGVluQun2drYYfePziLLWdSmFb4wSdWlJC1aimXQnjhPCheRKuw==}
+  /koffi@2.16.0:
+    resolution: {integrity: sha512-h/2NJueOKWd0YYycEOWDspomizgNfuOKf/V7ZE2fytvuRtHoY9Tb+y4x6GJ6pFqaVndWn9dLK+sCI14eWtu5rA==}
     requiresBuild: true
     dev: true
     optional: true
@@ -6406,7 +6405,7 @@ packages:
       zod: 4.3.6
     dev: true
 
-  /openclaw@2026.4.12(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)(@napi-rs/canvas@0.1.97)(@types/express@5.0.6)(apache-arrow@18.1.0)(typescript@5.9.3):
+  /openclaw@2026.4.12(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(@napi-rs/canvas@0.1.98)(@types/express@5.0.6)(apache-arrow@18.1.0)(typescript@5.9.3):
     resolution: {integrity: sha512-0siWIzT0OI8R+QWRJzTbDOcxAQnNXvQxFVXbF6CJMstsTyiG7hyW9HLRbTkv6SrxJEhuEMK91Ak2TLQjFjYZ5A==}
     engines: {node: '>=22.14.0'}
     hasBin: true
@@ -6424,7 +6423,7 @@ packages:
       '@aws-sdk/client-bedrock-runtime': 3.1028.0
       '@aws-sdk/credential-provider-node': 3.972.30
       '@aws/bedrock-token-generator': 1.1.0
-      '@buape/carbon': 0.15.0(@discordjs/opus@0.10.0)(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)(hono@4.12.12)(opusscript@0.1.1)
+      '@buape/carbon': 0.15.0(@discordjs/opus@0.10.0)(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(hono@4.12.12)(opusscript@0.1.1)
       '@clack/prompts': 1.2.0
       '@google/genai': 1.49.0(@modelcontextprotocol/sdk@1.29.0)
       '@grammyjs/runner': 2.0.3(grammy@1.42.0)
@@ -6441,7 +6440,7 @@ packages:
       '@matrix-org/matrix-sdk-crypto-wasm': 18.0.0
       '@modelcontextprotocol/sdk': 1.29.0(zod@4.3.6)
       '@mozilla/readability': 0.6.0
-      '@napi-rs/canvas': 0.1.97
+      '@napi-rs/canvas': 0.1.98
       '@sinclair/typebox': 0.34.49
       '@slack/bolt': 4.7.0(@types/express@5.0.6)
       '@slack/web-api': 7.15.1
@@ -6756,7 +6755,7 @@ packages:
     resolution: {integrity: sha512-tlUj+2IDa7G1SbvBNN74UHRLJybZDWYom+k6p5KIZl7huBvsA4APi6mKL+zCxd3tLjN5hOOEE9Tv7VdzO88pfg==}
     engines: {node: '>=20.19.0 || >=22.13.0 || >=24'}
     optionalDependencies:
-      '@napi-rs/canvas': 0.1.97
+      '@napi-rs/canvas': 0.1.98
       node-readable-to-web-readable-stream: 0.4.2
     dev: true
 
@@ -6850,8 +6849,8 @@ packages:
       signal-exit: 3.0.7
     dev: true
 
-  /protobufjs@7.5.4:
-    resolution: {integrity: sha512-CvexbZtbov6jW2eXAvLukXjXUW1TzFaivC46BpWc/3BpcCysb5Vffu+B3XHMm8lVEuy2Mm4XGex8hBSg1yapPg==}
+  /protobufjs@7.5.5:
+    resolution: {integrity: sha512-3wY1AxV+VBNW8Yypfd1yQY9pXnqTAN+KwQxL8iYm3/BjKYMNg4i0owhEe26PWDOMaIrzeeF98Lqd5NGz4omiIg==}
     engines: {node: '>=12.0.0'}
     requiresBuild: true
     dependencies:
@@ -6865,7 +6864,7 @@ packages:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.0
-      '@types/node': 20.19.37
+      '@types/node': 20.19.39
       long: 5.3.2
     dev: true
 
@@ -7763,7 +7762,7 @@ packages:
     engines: {node: '>= 0.8'}
     dev: true
 
-  /vite-node@3.2.4(@types/node@20.19.37)(tsx@4.21.0):
+  /vite-node@3.2.4(@types/node@20.19.39)(tsx@4.21.0):
     resolution: {integrity: sha512-EbKSKh+bh1E1IFxeO0pg1n4dvoOTt0UDiXMd/qn++r98+jPO1xtJilvXldeuQ8giIB5IkpjCgMleHMNEsGH6pg==}
     engines: {node: ^18.0.0 || ^20.0.0 || >=22.0.0}
     hasBin: true
@@ -7772,7 +7771,7 @@ packages:
       debug: 4.4.3
       es-module-lexer: 1.7.0
       pathe: 2.0.3
-      vite: 7.3.2(@types/node@20.19.37)(tsx@4.21.0)
+      vite: 7.3.2(@types/node@20.19.39)(tsx@4.21.0)
     transitivePeerDependencies:
       - '@types/node'
       - jiti
@@ -7788,7 +7787,7 @@ packages:
       - yaml
     dev: true
 
-  /vite@7.3.2(@types/node@20.19.37)(tsx@4.21.0):
+  /vite@7.3.2(@types/node@20.19.39)(tsx@4.21.0):
     resolution: {integrity: sha512-Bby3NOsna2jsjfLVOHKes8sGwgl4TT0E6vvpYgnAYDIF/tie7MRaFthmKuHx1NSXjiTueXH3do80FMQgvEktRg==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
@@ -7828,7 +7827,7 @@ packages:
       yaml:
         optional: true
     dependencies:
-      '@types/node': 20.19.37
+      '@types/node': 20.19.39
       esbuild: 0.27.7
       fdir: 6.5.0(picomatch@4.0.4)
       picomatch: 4.0.4
@@ -7840,7 +7839,7 @@ packages:
       fsevents: 2.3.3
     dev: true
 
-  /vitest@3.2.4(@types/node@20.19.37)(tsx@4.21.0):
+  /vitest@3.2.4(@types/node@20.19.39)(tsx@4.21.0):
     resolution: {integrity: sha512-LUCP5ev3GURDysTWiP47wRRUpLKMOfPh+yKTx3kVIEiu5KOMeqzpnYNsKyOoVrULivR8tLcks4+lga33Whn90A==}
     engines: {node: ^18.0.0 || ^20.0.0 || >=22.0.0}
     hasBin: true
@@ -7869,7 +7868,7 @@ packages:
         optional: true
     dependencies:
       '@types/chai': 5.2.3
-      '@types/node': 20.19.37
+      '@types/node': 20.19.39
       '@vitest/expect': 3.2.4
       '@vitest/mocker': 3.2.4(vite@7.3.2)
       '@vitest/pretty-format': 3.2.4
@@ -7889,8 +7888,8 @@ packages:
       tinyglobby: 0.2.15
       tinypool: 1.1.1
       tinyrainbow: 2.0.0
-      vite: 7.3.2(@types/node@20.19.37)(tsx@4.21.0)
-      vite-node: 3.2.4(@types/node@20.19.37)(tsx@4.21.0)
+      vite: 7.3.2(@types/node@20.19.39)(tsx@4.21.0)
+      vite-node: 3.2.4(@types/node@20.19.39)(tsx@4.21.0)
       why-is-node-running: 2.3.0
     transitivePeerDependencies:
       - jiti
