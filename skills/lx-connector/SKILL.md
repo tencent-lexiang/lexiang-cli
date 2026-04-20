@@ -1,13 +1,13 @@
 ---
 name: lx-connector
 version: 1.0.0
-description: "乐享外部数据导入与评论管理。支持腾讯会议记录导入、页面评论查看。当用户需要从外部系统导入数据到知识库，或查看文档评论时使用。触发词：腾讯会议、会议记录、导入、评论、comment"
+description: "乐享外部数据导入。支持腾讯会议记录导入到知识库。当用户需要从外部系统导入数据到知识库时使用。触发词：腾讯会议、会议记录、导入、外部数据"
 metadata:
   requires:
     bins: ["lx"]
 ---
 
-# 外部数据导入与评论
+# 外部数据导入
 
 > **前置条件：** 需要 `lx` CLI 已配置并登录。
 
@@ -16,7 +16,6 @@ metadata:
 **进入场景：**
 
 - 用户说"导入腾讯会议记录"/"把这个会议存到知识库"
-- 用户说"查看这个页面的评论"
 
 **禁止在本 skill 中执行：**
 
@@ -27,10 +26,8 @@ metadata:
 
 ```text
 识别场景 →
-├── 导入腾讯会议记录?
-│   └── lx meeting search-tx-meeting-records → lx meeting import-tx-meeting-record
-└── 查看/管理页面评论?
-    └── lx comment list-comments / lx comment describe-comment
+└── 导入腾讯会议记录?
+    └── lx meeting search-tx-meeting-records → lx meeting import-tx-meeting-record
 ```
 
 ## ⚠️ 高风险操作与默认优先路径
@@ -44,11 +41,8 @@ metadata:
 **默认优先路径：**
 
 1. 导入目标必须预先确定 → 若用户未指定，需先通过 lx-space skill 定位目标知识库和父节点
-2. 评论内容特殊格式 → `lx comment describe-comment` 返回的 `content` 不是普通 HTML，需要特殊解析
 
 ## 可用工具
-
-### 腾讯会议导入
 
 | 命令 | 说明 | 参考 |
 |------|------|------|
@@ -58,18 +52,10 @@ metadata:
 | `lx meeting import-tx-meeting-record` | 导入会议记录到知识库 | [meeting.md](references/meeting.md) |
 | `lx meeting reload-tx-meeting-record` | 重新加载已导入记录 | [meeting.md](references/meeting.md) |
 
-### 评论管理
-
-| 命令 | 说明 | 参考 |
-|------|------|------|
-| `lx comment list-comments` | 获取页面评论列表 | [comment.md](references/comment.md) |
-| `lx comment describe-comment` | 获取评论详情 | [comment.md](references/comment.md) |
-
 ## 🎯 执行规则
 
 1. **会议导入流程**：必须先搜索（`lx meeting search-tx-meeting-records`）拿到录制信息，再导入（`lx meeting import-tx-meeting-record`）。导入需要指定目标知识库的 `--parent-entry-id`。
-2. **评论内容特殊格式**：`lx comment describe-comment` 返回的 `content` 不是普通 HTML，需要特殊解析。
-3. **导入目标必须预先确定**：所有导入操作都需要 `--parent-entry-id`，若用户未指定，需先通过 lx-space skill 定位目标知识库和父节点。
+2. **导入目标必须预先确定**：所有导入操作都需要 `--parent-entry-id`，若用户未指定，需先通过 lx-space skill 定位目标知识库和父节点。
 
 ## 典型组合流程
 
@@ -83,14 +69,4 @@ lx meeting search-tx-meeting-records --meeting-code "123456789"
 lx meeting import-tx-meeting-record \
   --record-file-id rec_file_xxx \
   --parent-entry-id folder_xxx
-```
-
-### 查看页面评论
-
-```bash
-# 获取评论列表
-lx comment list-comments --target-type kb_entry --target-id entry_xxx
-
-# 查看评论详情
-lx comment describe-comment --comment-id comment_xxx
 ```
