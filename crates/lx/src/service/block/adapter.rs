@@ -1123,7 +1123,8 @@ mod verify_ids {
         );
 
         // Write to file for inspection
-        std::fs::write("/tmp/ir_output_test.json", &json_str).expect("write failed");
+        let tmp_path = std::env::temp_dir().join("ir_output_test.json");
+        std::fs::write(&tmp_path, &json_str).expect("write failed");
 
         let children = json["children"].as_array().unwrap();
         for (i, c) in children.iter().enumerate() {
