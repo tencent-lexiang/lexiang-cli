@@ -1,12 +1,21 @@
-//! 内容转换：markdown ↔ blocks
+//! 内容转换：markdown / mdx ↔ blocks
+//!
+//! 两条链路:
+//!   - **Markdown 链路**: 调 MCP `block_convert_content_to_blocks`，服务端转换
+//!   - **MDX 链路**: 本地 MDX parser → `DocIR` → `ir_to_descendant()` → 直接构造 Block JSON
 
+use super::adapter::{block_to_ir, ir_to_descendant};
+use super::mdx::{emit_mdx, parse_mdx};
 use super::types::{Block, BlockType};
 use super::BlockService;
 use anyhow::Result;
 
+// ============================================================
+//  Markdown 渲染（纯函数，用于 git 导出等场景）
+// ============================================================
+
 /// 纯函数：Block 树转 markdown（不需要 MCP 调用）
 ///
-/// 从 cmd/git/mod.rs 的 `blocks_to_markdown` 提取并增强，
 /// 支持强类型 Block 和嵌套子块递归。
 pub fn render_blocks_to_markdown(blocks: &[Block]) -> String {
     let mut lines = Vec::new();
@@ -196,6 +205,94 @@ impl BlockService {
         }
 
         Ok(())
+    }
+
+    // ============================================================
+    //  新链路：本地 MDX 引擎（不经过 MCP 转换器）
+    // ============================================================
+
+    /// Block 树 → MDX 文本（本地引擎，完整语义保真）
+    ///
+    /// 流程: Block JSON → `block_to_ir()` → `DocIR` → `emit_mdx()` → String
+    pub fn blocks_to_mdx_local(blocks: &[Block]) -> Result<String> {
+        let doc = block_to_ir(blocks);
+        let mdx = emit_mdx(&doc);
+        Ok(mdx)
+    }
+
+    /// 单个 Block → MDX（便捷方法）
+    pub fn block_to_mdx_local(block: &Block) -> Result<String> {
+        Self::blocks_to_mdx_local(std::slice::from_ref(block))
+    }
+
+    /// MDX 文本 → 完整 descendant JSON（本地引擎）
+    ///
+    /// 流程: MDX string → `parse_mdx()` → `DocIR` → `ir_to_descendant()` → JSON
+    ///
+    /// 返回的 JSON 可直接传给 `block_create_block_descendant` 的 `descendant` 参数。
+    /// **不调用 MCP** `block_convert_content_to_blocks`。
+    pub fn mdx_to_blocks_local(mdx_str: &str) -> Result<serde_json::Value> {
+        let doc = parse_mdx(mdx_str)?;
+        let json = ir_to_descendant(&doc);
+        Ok(json)
+    }
+
+    /// MDX 文本导入到指定父块（本地解析 + 分批插入）
+    ///
+    /// 与 `import_markdown` 类似，但使用本地 MDX parser 而非 MCP 转换。
+    pub async fn import_mdx(
+        &self,
+        parent_id: &str,
+        mdx_str: &str,
+        chunk_size: usize,
+    ) -> Result<()> {
+        let descendant = Self::mdx_to_blocks_local(mdx_str)?;
+
+        // 获取 children 数组
+        let children = descendant
+            .get("children")
+            .and_then(|c| c.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        if children.is_empty() {
+            // 没有子块，直接创建整个 descendant
+            self.mcp
+                .call_tool(
+                    "block_create_block_descendant",
+                    serde_json::json!({
+                        "block_id": parent_id,
+                        "descendant": descendant,
+                    }),
+                )
+                .await?;
+            return Ok(());
+        }
+
+        // 分块插入
+        for chunk in children.chunks(chunk_size) {
+            let chunk_descendant = serde_json::json!({
+                "children": chunk,
+            });
+
+            self.mcp
+                .call_tool(
+                    "block_create_block_descendant",
+                    serde_json::json!({
+                        "block_id": parent_id,
+                        "descendant": chunk_descendant,
+                    }),
+                )
+                .await?;
+        }
+
+        Ok(())
+    }
+
+    /// 获取整个文档为 MDX（通过 `get_tree` + 本地转换）
+    pub async fn export_as_mdx(&self, root_id: &str) -> Result<String> {
+        let tree = self.get_tree(root_id, true).await?;
+        Self::blocks_to_mdx_local(&tree.children)
     }
 }
 

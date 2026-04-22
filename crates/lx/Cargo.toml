@@ -64,6 +64,7 @@ thiserror = "1"
 
 # MDX parsing (markdown-rs with MDX extensions)
 markdown = "1"
+uuid = { version = "1", features = ["v4"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

@@ -482,15 +482,15 @@ async fn handle_get(service: &BlockService, matches: &clap::ArgMatches) -> Resul
 
     match format {
         "mdx" | "markdown" => {
-            // 提取 block 数据并转换为 MDX
-            use crate::service::block::converter::render_blocks_to_markdown;
+            // 使用本地 MDX 引擎（完整语义保真）
+            use crate::service::block::BlockService;
             let block_data = result
                 .get("data")
                 .or_else(|| result.get("block"))
                 .cloned()
                 .unwrap_or(result.clone());
             let block = crate::service::block::Block::from_json(&block_data);
-            let mdx = render_blocks_to_markdown(&[block]);
+            let mdx = BlockService::block_to_mdx_local(&block)?;
             print!("{}", mdx);
         }
         _ => {
@@ -709,27 +709,33 @@ async fn handle_convert(_service: &BlockService, matches: &clap::ArgMatches) -> 
     };
 
     match (input_type, to) {
-        ("mdx" | "markdown", "blocks" | "json") => {
-            // MDX → blocks: 使用服务端转换
-            // 这里我们用本地 MDX 解析器如果有的话，否则提示需要 MCP
-            eprintln!("Note: MDX→blocks conversion requires MCP server call.");
-            eprintln!("Use 'lx mcp call block_convert_content_to_blocks' or set up service.");
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&serde_json::json!({
-                    "input_type": input_type,
-                    "output_type": to,
-                    "content_preview": raw.chars().take(200).collect::<String>(),
-                    "note": "Use lx mcp call block_convert_content_to_blocks for server-side conversion"
-                }))?
-            );
+        ("mdx", "blocks" | "json") => {
+            // MDX → blocks: 使用本地引擎（不经过 MCP）
+            use crate::service::block::BlockService;
+            let json = BlockService::mdx_to_blocks_local(&raw)?;
+            println!("{}", serde_json::to_string_pretty(&json)?);
+        }
+        ("mdx", "mdx" | "markdown") => {
+            // MDX → MDX (验证 round-trip): parse → emit
+            use crate::service::block::{mdx::emit_mdx, mdx::parse_mdx};
+            let doc = parse_mdx(&raw)?;
+            print!("{}", emit_mdx(&doc));
         }
         ("blocks" | "json", "mdx" | "markdown") => {
-            // blocks → MDX: 本地转换
+            // blocks → MDX: 本地引擎
+            use crate::service::block::BlockService;
             let parsed: serde_json::Value = serde_json::from_str(&raw)?;
-            let block = crate::service::block::Block::from_json(&parsed);
-            use crate::service::block::converter::render_blocks_to_markdown;
-            print!("{}", render_blocks_to_markdown(&[block]));
+            // 支持单个 block 对象或数组
+            if let Some(arr) = parsed.as_array() {
+                let blocks: Vec<crate::service::block::Block> = arr
+                    .iter()
+                    .map(crate::service::block::Block::from_json)
+                    .collect();
+                print!("{}", BlockService::blocks_to_mdx_local(&blocks)?);
+            } else {
+                let block = crate::service::block::Block::from_json(&parsed);
+                print!("{}", BlockService::block_to_mdx_local(&block)?);
+            }
         }
         _ => {
             // 同类型或未知，直接输出格式化的结果
@@ -757,8 +763,13 @@ async fn handle_export(service: &BlockService, matches: &clap::ArgMatches) -> Re
             let tree = service.get_tree(block_id, true).await?;
             println!("{}", serde_json::to_string_pretty(&tree)?);
         }
+        "mdx" => {
+            // 使用本地 MDX 引擎（完整语义保真：Callout/ColumnList/Table/Todo 等）
+            let mdx = service.export_as_mdx(block_id).await?;
+            print!("{}", mdx);
+        }
         _ => {
-            // mdx / markdown
+            // markdown 兜底（旧链路，简单渲染）
             let md = service.blocks_to_markdown(block_id).await?;
             print!("{}", md);
         }
@@ -773,13 +784,30 @@ async fn handle_import(service: &BlockService, matches: &clap::ArgMatches) -> Re
     let chunk_size = *matches.get_one::<usize>("chunk-size").unwrap();
 
     let content = std::fs::read_to_string(file)?;
-    service
-        .import_markdown(block_id, &content, chunk_size)
-        .await?;
-    println!(
-        "\u{2713} Imported from {} (chunk_size={})",
-        file, chunk_size
-    );
+
+    // 检测内容类型：MDX 使用本地引擎，Markdown 走旧 MCP 链路
+    let content_type = detect_content_type(&content);
+
+    match content_type {
+        "mdx" => {
+            // 本地引擎：MDX → DocIR → ir_to_descendant() → 分批插入
+            service.import_mdx(block_id, &content, chunk_size).await?;
+            println!(
+                "\u{2713} Imported from {} using local MDX engine (chunk_size={})",
+                file, chunk_size
+            );
+        }
+        _ => {
+            // 旧链路：Markdown → MCP 服务端转换
+            service
+                .import_markdown(block_id, &content, chunk_size)
+                .await?;
+            println!(
+                "\u{2713} Imported from {} via MCP server (chunk_size={})",
+                file, chunk_size
+            );
+        }
+    }
 
     Ok(())
 }
@@ -1025,8 +1053,13 @@ async fn resolve_descendant(
             // 已经是 JSON，直接使用
             Ok(serde_json::from_str(raw)?)
         }
-        "mdx" | "markdown" => {
-            // MDX/Markdown → blocks（调用 MCP 服务端转换）
+        "mdx" => {
+            // MDX → blocks（本地引擎，不经过 MCP 转换器）
+            use crate::service::block::BlockService;
+            BlockService::mdx_to_blocks_local(raw)
+        }
+        "markdown" => {
+            // 旧链路：Markdown → MCP 服务端转换
             service.markdown_to_blocks(raw).await
         }
         _ => service.markdown_to_blocks(raw).await,
@@ -1051,8 +1084,13 @@ async fn resolve_update_data(
             let parsed: serde_json::Value = serde_json::from_str(raw)?;
             Ok(parsed)
         }
-        "mdx" | "markdown" => {
-            // 先转为 blocks 再包装
+        "mdx" => {
+            // MDX → blocks（本地引擎，不经过 MCP 转换器）
+            use crate::service::block::BlockService;
+            BlockService::mdx_to_blocks_local(raw)
+        }
+        "markdown" => {
+            // 旧链路：先转为 blocks 再包装
             let descendant = service.markdown_to_blocks(raw).await?;
             Ok(descendant)
         }

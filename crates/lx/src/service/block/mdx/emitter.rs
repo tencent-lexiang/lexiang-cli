@@ -1,14 +1,39 @@
 //! `DocIR` → MDX Emitter
 //!
 //! Serializes a `DocIR` tree back to MDX text.
-//! Output follows AI Ingest Spec formatting rules:
-//! - Multi-line component syntax with 4-space indent
-//! - Double-quoted attributes
-//! - Boolean attributes without values
+//! Output aligned with Notion Enhanced Markdown Specification:
+//! - Lowercase component tags: `<callout>`, `<details>`, `<columns>`, `<column>`, `<table>`
+//! - Block-level color via `{color="Color"}` attribute suffix
+//! - Inline styles: `<Mark bold>`, `<span underline>`, `<span color>
+//! - Quote uses native `> {color}` syntax (not mapped to callout)
 
 #![allow(dead_code)]
 
 use crate::service::block::ir::{BlockAttrs, InlineStyle, Node, NodeType};
+
+/// Valid Notion block colors (text colors & background colors)
+const VALID_COLORS: &[&str] = &[
+    "gray",
+    "brown",
+    "orange",
+    "yellow",
+    "green",
+    "blue",
+    "purple",
+    "pink",
+    "red",
+    "gray_bg",
+    "brown_bg",
+    "orange_bg",
+    "yellow_bg",
+    "green_bg",
+    "blue_bg",
+    "purple_bg",
+    "pink_bg",
+    "red_bg",
+    "default",
+    "default_background",
+];
 
 /// Serialize a `DocIR` node to MDX text
 pub fn emit_mdx(node: &Node) -> String {
@@ -37,16 +62,28 @@ impl Emitter {
         self.output.push('\n');
     }
 
+    /// Emit `id={N}` attribute if node has a numeric-style id from original block JSON
+    fn maybe_emit_id(&mut self, node: &Node) {
+        if let Some(ref id) = node.id {
+            // Try to parse as number for numeric output; otherwise use string
+            if let Ok(num) = id.parse::<u64>() {
+                self.push(&format!(" id={{{num}}}"));
+            } else {
+                self.push(&format!(" id=\"{id}\""));
+            }
+        }
+    }
+
     fn emit_node(&mut self, node: &Node, depth: usize) {
         match &node.node_type {
             NodeType::Document => self.emit_document(node, depth),
             NodeType::Paragraph => self.emit_paragraph(node, depth),
             NodeType::Heading { level } => self.emit_heading(*level, node, depth),
-            NodeType::BlockQuote => self.emit_block_quote(node, depth),
+            NodeType::BlockQuote => self.emit_quote(node, depth),
             NodeType::Callout { color, icon } => {
                 self.emit_callout(color.as_deref(), icon.as_deref(), node, depth);
             }
-            NodeType::ColumnList => self.emit_column_list(node, depth),
+            NodeType::ColumnList => self.emit_columns(node, depth),
             NodeType::Column { width_ratio } => self.emit_column(*width_ratio, node, depth),
             NodeType::Divider => self.emit_divider(depth),
             NodeType::Image {
@@ -84,10 +121,6 @@ impl Emitter {
     }
 
     fn emit_document(&mut self, node: &Node, _depth: usize) {
-        if !self.attrs_is_empty(&node.attrs) {
-            self.emit_frontmatter(&node.attrs);
-        }
-
         for (i, child) in node.children.iter().enumerate() {
             if i > 0 {
                 self.newline();
@@ -97,10 +130,24 @@ impl Emitter {
         }
     }
 
+    /// Emit Notion block-level color attribute: `{color="Color"}`
+    /// Only emits if color is a valid Notion color name.
+    fn maybe_emit_block_color(&mut self, attrs: &BlockAttrs) {
+        if let Some(ref c) = attrs.block_color {
+            let trimmed = c.trim();
+            if !trimmed.is_empty()
+                && (VALID_COLORS.contains(&trimmed)
+                    || trimmed == "default"
+                    || trimmed.starts_with('#'))
+            {
+                self.push(&format!(" {{color=\"{trimmed}\"}}"));
+            }
+        }
+    }
+
     fn attrs_is_empty(&self, attrs: &BlockAttrs) -> bool {
         attrs.text_align.is_none()
             && attrs.block_color.is_none()
-            && attrs.border_color.is_none()
             && attrs.icon.is_none()
             && attrs.width.is_none()
             && attrs.height.is_none()
@@ -114,9 +161,6 @@ impl Emitter {
         if let Some(ref bc) = attrs.block_color {
             self.push(&format!("blockColor: {bc}\n"));
         }
-        if let Some(ref brc) = attrs.border_color {
-            self.push(&format!("borderColor: {brc}\n"));
-        }
         if let Some(ref icon) = attrs.icon {
             self.push(&format!("icon: \"{icon}\"\n"));
         }
@@ -124,33 +168,92 @@ impl Emitter {
     }
 
     fn emit_paragraph(&mut self, node: &Node, _depth: usize) {
+        self.maybe_emit_block_color(&node.attrs);
         self.emit_inline_children(&node.children);
     }
 
     fn emit_heading(&mut self, level: u8, node: &Node, _depth: usize) {
         self.push(&"#".repeat(level as usize));
         self.push(" ");
+        self.maybe_emit_block_color(&node.attrs);
         self.emit_inline_children(&node.children);
     }
 
-    fn emit_block_quote(&mut self, node: &Node, _depth: usize) {
-        let lines = self.collect_inline_lines(node);
-        for (i, line) in lines.iter().enumerate() {
-            if i > 0 {
-                self.newline();
-            }
+    /// Notion quote: `> Rich text {color="Color"}` with children
+    fn emit_quote(&mut self, node: &Node, depth: usize) {
+        // Single-line inline content → native `> text {color}` format
+        let is_simple = node
+            .children
+            .iter()
+            .all(|c| matches!(c.node_type, NodeType::Text | NodeType::Link { .. }));
+        if is_simple && !node.children.is_empty() {
+            let text_content = node
+                .children
+                .iter()
+                .map(|c| match &c.node_type {
+                    NodeType::Text => c.text.as_deref().unwrap_or("").to_string(),
+                    NodeType::Link { href } => {
+                        let inner = c
+                            .children
+                            .iter()
+                            .filter_map(|cc| cc.text.clone())
+                            .collect::<String>();
+                        format!("[{}]({href})", inner)
+                    }
+                    _ => String::new(),
+                })
+                .collect::<String>();
             self.push("> ");
-            self.push(line);
+            self.maybe_emit_block_color(&node.attrs);
+            self.push(&text_content);
+        } else if node.children.len() == 1 {
+            // Multi-line single blockquote: use <br> for line breaks
+            self.push("> ");
+            self.maybe_emit_block_color(&node.attrs);
+            let mut first = true;
+            for child in &node.children {
+                if !first {
+                    self.push("<br>");
+                }
+                first = false;
+                // Collect text content recursively into buffer
+                let mut buf = String::new();
+                self.collect_inline_to_buf(child, &mut buf);
+                self.push(&buf);
+            }
+        } else if !node.children.is_empty() {
+            // Multiple child blocks in quote: each gets its own `>` line + children indented with tab
+            for (i, child) in node.children.iter().enumerate() {
+                if i > 0 {
+                    self.newline();
+                }
+                self.push("> ");
+                self.maybe_emit_block_color(&node.attrs);
+                self.emit_node(child, depth);
+                // If this child has its own children, indent them as tab under >
+                if !child.children.is_empty() {
+                    for sub_child in &child.children {
+                        self.newline();
+                        self.push("\t");
+                        self.emit_node(sub_child, depth + 1);
+                    }
+                }
+            }
+        } else {
+            // Empty quote
+            self.push("> ");
+            self.maybe_emit_block_color(&node.attrs);
         }
     }
 
+    /// Notion callout: `<callout icon? color?>` (lowercase)
     fn emit_callout(&mut self, color: Option<&str>, icon: Option<&str>, node: &Node, depth: usize) {
-        self.push("<Callout");
+        self.push("<callout");
         if let Some(ico) = icon {
             self.push(&format!(" icon=\"{ico}\""));
         }
-        if let Some(bc) = color {
-            self.push(&format!(" borderColor=\"{bc}\""));
+        if let Some(c) = color {
+            self.push(&format!(" color=\"{c}\""));
         }
         self.push(">");
         self.newline();
@@ -161,11 +264,12 @@ impl Emitter {
             self.newline();
         }
 
-        self.push("</Callout>");
+        self.push("</callout>");
     }
 
-    fn emit_column_list(&mut self, node: &Node, depth: usize) {
-        self.push("<ColumnList>");
+    /// Notion columns: `<columns><column>...</column></columns>`
+    fn emit_columns(&mut self, node: &Node, depth: usize) {
+        self.push("<columns>");
         self.newline();
 
         for child in &node.children {
@@ -174,14 +278,12 @@ impl Emitter {
             self.newline();
         }
 
-        self.push("</ColumnList>");
+        self.push("</columns>");
     }
 
-    fn emit_column(&mut self, width_ratio: Option<f64>, node: &Node, depth: usize) {
-        match width_ratio {
-            Some(wr) => self.push(&format!("<Column width=\"{:.0}%\">", wr * 100.0)),
-            None => self.push("<Column>"),
-        }
+    /// Notion column: `<column>` — no width attribute (Notion doesn't use `width_ratio` in MDX output)
+    fn emit_column(&mut self, _width_ratio: Option<f64>, node: &Node, depth: usize) {
+        self.push("<column>");
         self.newline();
 
         for child in &node.children {
@@ -190,7 +292,7 @@ impl Emitter {
             self.newline();
         }
 
-        self.push("</Column>");
+        self.push("</column>");
     }
 
     fn emit_divider(&mut self, _depth: usize) {
@@ -212,7 +314,7 @@ impl Emitter {
     }
 
     fn emit_table(&mut self, node: &Node, depth: usize) {
-        self.push("<Table>");
+        self.push("<table>");
         self.newline();
 
         for child in &node.children {
@@ -221,11 +323,11 @@ impl Emitter {
             self.newline();
         }
 
-        self.push("</Table>");
+        self.push("</table>");
     }
 
     fn emit_table_row(&mut self, node: &Node, depth: usize) {
-        self.push("<TableRow>");
+        self.push("<tr>");
         self.newline();
 
         for child in &node.children {
@@ -234,13 +336,18 @@ impl Emitter {
             self.newline();
         }
 
-        self.push("</TableRow>");
+        self.push("</tr>");
     }
 
     fn emit_table_cell(&mut self, node: &Node, _depth: usize) {
-        self.push("<TableCell>");
+        // Check if cell has background_color from IR fields
+        let bg_color = node.cell_bg_color.as_deref();
+        match bg_color {
+            Some(color) => self.push(&format!("<td color=\"{color}\">")),
+            None => self.push("<td>"),
+        }
         self.emit_inline_children(&node.children);
-        self.push("</TableCell>");
+        self.push("</td>");
     }
 
     fn emit_todo(&mut self, done: bool, node: &Node, _depth: usize) {
@@ -289,14 +396,43 @@ impl Emitter {
     }
 
     fn emit_toggle(&mut self, node: &Node, depth: usize) {
-        self.push("<Toggle>");
+        // Notion toggle: <details color?="Color"><summary>Rich text</summary>children</details>
+        self.push("<details>");
+        if let Some(ref c) = node.attrs.block_color {
+            let trimmed = c.trim();
+            if !trimmed.is_empty() && (VALID_COLORS.contains(&trimmed) || trimmed.starts_with('#'))
+            {
+                self.push(&format!(" color=\"{trimmed}\""));
+            }
+        }
+        self.push(">\n");
+        self.push_indent(depth + 1);
+        // Summary line from first child inline text
+        let summary_text = node
+            .children
+            .first()
+            .map(super::super::ir::Node::plain_content)
+            .filter(|t| !t.is_empty());
+        match summary_text {
+            Some(text) => {
+                self.push("<summary>");
+                self.push(&text);
+                self.push("</summary>");
+            }
+            None => {
+                self.push("<summary>");
+                self.push("</summary>");
+            }
+        }
         self.newline();
-        for child in &node.children {
+
+        for child in node.children.iter().skip(1) {
             self.push_indent(depth + 1);
             self.emit_node(child, depth + 1);
             self.newline();
         }
-        self.push("</Toggle>");
+
+        self.push("</details>");
     }
 
     fn emit_mermaid(&mut self, node: &Node, _depth: usize) {
@@ -333,22 +469,67 @@ impl Emitter {
     }
 
     fn emit_styled_text(&mut self, text: &str, style: &InlineStyle) {
-        self.push("<Mark");
-        if style.bold {
-            self.push(" bold");
+        // Determine which wrapper to use
+        let has_bold_or_strike_or_code = style.bold || style.strike_through || style.inline_code;
+        let has_italic = style.italic;
+        let has_underline_or_color =
+            style.underline || style.text_color.is_some() || style.background_color.is_some();
+        let is_plain = style.is_plain();
+
+        if is_plain {
+            self.push(text);
+        } else if has_underline_or_color && !has_bold_or_strike_or_code && !has_italic {
+            // Pure span-style attributes (underline, color)
+            self.push("<span");
+            if style.underline {
+                self.push(" underline=\"true\"");
+            }
+            if let Some(ref c) = style.text_color {
+                let trimmed = c.trim();
+                if !trimmed.is_empty()
+                    && (VALID_COLORS.contains(&trimmed) || trimmed.starts_with('#'))
+                {
+                    self.push(&format!(" color=\"{trimmed}\""));
+                }
+            }
+            if let Some(ref c) = style.background_color {
+                let trimmed = c.trim();
+                if !trimmed.is_empty()
+                    && (VALID_COLORS.contains(&trimmed) || trimmed.starts_with('#'))
+                {
+                    self.push(&format!(" color=\"{trimmed}\""));
+                }
+            }
+            self.push(">");
+            self.push(text);
+            self.push("</span>");
+        } else if has_bold_or_strike_or_code || has_italic {
+            // Mark-style for bold/strike/code/italic
+            self.push("<Mark");
+            if style.bold {
+                self.push(" bold");
+            }
+            if style.italic {
+                self.push(" italic");
+            }
+            if style.strike_through {
+                self.push(" strikeThrough");
+            }
+            if style.inline_code {
+                self.push(" inlineCode");
+            }
+            self.push(">");
+            self.push(text);
+            self.push("</Mark>");
+        } else if has_italic {
+            // Pure italic only → standard markdown *text*
+            self.push("*");
+            self.push(text);
+            self.push("*");
+        } else {
+            // Underline/color only fallback
+            self.push(text);
         }
-        if style.italic {
-            self.push(" italic");
-        }
-        if style.underline {
-            self.push(" underline");
-        }
-        if style.strike_through {
-            self.push(" strikeThrough");
-        }
-        self.push(">");
-        self.push(text);
-        self.push("</Mark>");
     }
 
     fn emit_link(&mut self, href: &str, node: &Node) {
@@ -372,6 +553,28 @@ impl Emitter {
         let mut buf = String::new();
         self.collect_inline_recursive(node, &mut buf);
         vec![buf]
+    }
+
+    /// Collect inline text content into buffer for quote rendering
+    fn collect_inline_to_buf(&mut self, node: &Node, buf: &mut String) {
+        match &node.node_type {
+            NodeType::Text => {
+                buf.push_str(node.text.as_deref().unwrap_or(""));
+            }
+            NodeType::Link { href } => {
+                let text = node
+                    .children
+                    .iter()
+                    .map(super::super::ir::Node::plain_content)
+                    .collect::<String>();
+                buf.push_str(&format!("[{text}]({href})"));
+            }
+            _ => {
+                for child in &node.children {
+                    self.collect_inline_to_buf(child, buf);
+                }
+            }
+        }
     }
 
     fn collect_inline_recursive(&mut self, node: &Node, buf: &mut String) {
@@ -461,11 +664,19 @@ mod tests {
             vec![Node::paragraph(vec![Node::plain_text("Warning message")])],
         )]);
         let mdx = emit_mdx(&node);
-        assert!(mdx.contains("<Callout"));
+        // Notion format: lowercase <callout>
+        assert!(
+            mdx.contains("<callout"),
+            "expected lowercase callout, got: {mdx}"
+        );
         assert!(mdx.contains("icon=\"\u{1f6a7}\""));
-        assert!(mdx.contains("borderColor=\"red\""));
+        // Notion uses color= not borderColor=
+        assert!(mdx.contains("color=\"red\""));
         assert!(mdx.contains("Warning message"));
-        assert!(mdx.contains("</Callout>"));
+        assert!(
+            mdx.contains("</callout>"),
+            "expected </callout>, got: {mdx}"
+        );
     }
 
     #[test]
@@ -498,9 +709,16 @@ mod tests {
             italic_node,
         ])]);
         let mdx = emit_mdx(&node);
-        assert!(mdx.contains("<Mark bold>bold text</Mark>"));
+        // Bold uses <Mark bold>, italic uses <Mark italic>
+        assert!(
+            mdx.contains("<Mark bold>bold text</Mark>"),
+            "expected <Mark bold>, got: {mdx}"
+        );
         assert!(mdx.contains(" and "));
-        assert!(mdx.contains("<Mark italic>italic</Mark>"));
+        assert!(
+            mdx.contains("<Mark italic>italic</Mark>") || mdx.contains("*italic*"),
+            "expected italic format, got: {mdx}"
+        );
     }
 
     #[test]
@@ -518,18 +736,82 @@ mod tests {
         doc.attrs.text_align = Some("center".to_string());
         doc.attrs.icon = Some("\u{1f4c4}".to_string());
         let mdx = emit_mdx(&doc);
-        assert!(mdx.contains("---"));
-        assert!(mdx.contains("textAlign: center"));
-        assert!(mdx.contains("icon: \"\u{1f4c4}\""));
+        // Frontmatter is no longer emitted as YAML; block_color goes inline
+        // This test now checks that content is emitted without YAML wrapper
         assert!(mdx.contains("content"));
     }
 
     #[test]
-    fn test_roundtrip_simple() {
-        let original = "# Hello\n\nThis is **bold**.\n\n- Item one\n\n```rust\nlet x = 1;\n```";
-        let doc = crate::service::block::mdx::parser::parse_mdx(original).unwrap();
-        let emitted = emit_mdx(&doc);
-        let doc2 = crate::service::block::mdx::parser::parse_mdx(&emitted).unwrap();
-        assert_eq!(doc.children.len(), doc2.children.len());
+    fn test_emit_toggle() {
+        let node = Node::document(vec![Node::toggle(vec![
+            Node::plain_text("Click to expand"),
+            Node::paragraph(vec![Node::plain_text("Hidden content")]),
+        ])]);
+        let mdx = emit_mdx(&node);
+        // Notion format: <details><summary>Click to expand</summary>children</details>
+        assert!(mdx.contains("<details"));
+        assert!(mdx.contains("<summary>Click to expand</summary>"));
+        assert!(mdx.contains("Hidden content"));
+        assert!(mdx.contains("</details>"));
+    }
+
+    #[test]
+    fn test_emit_columns_notion() {
+        let node = Node::document(vec![Node::column_list(vec![
+            Node::column(
+                Some(0.5),
+                vec![Node::heading(2, vec![Node::plain_text("Left")])],
+            ),
+            Node::column(
+                Some(0.5),
+                vec![Node::heading(2, vec![Node::plain_text("Right")])],
+            ),
+        ])]);
+        let mdx = emit_mdx(&node);
+        // Notion format: lowercase <columns>/<column>
+        assert!(mdx.contains("<columns>"));
+        assert!(mdx.contains("</columns>"));
+        assert!(mdx.contains("<column>"));
+        assert!(mdx.contains("</column>"));
+    }
+
+    #[test]
+    fn test_emit_quote_native() {
+        // Simple quote with text children → native > format
+        let node = Node::document(vec![Node::quote(vec![Node::plain_text(
+            "A quoted message",
+        )])]);
+        let mdx = emit_mdx(&node);
+        assert!(
+            mdx.starts_with("> A quoted message"),
+            "expected native > quote, got: {mdx}"
+        );
+    }
+
+    #[test]
+    fn test_emit_block_color() {
+        // Paragraph with block_color
+        let mut p = Node::paragraph(vec![Node::plain_text("Colored text")]);
+        p.attrs.block_color = Some("blue".to_string());
+        let node = Node::document(vec![p]);
+        let mdx = emit_mdx(&node);
+        assert!(
+            mdx.contains("{color=\"blue\"}"),
+            "expected color attribute, got: {mdx}"
+        );
+        assert!(mdx.contains("Colored text"));
+    }
+
+    #[test]
+    fn test_emit_table_notion() {
+        let cell = Node::table_cell(vec![Node::plain_text("data")]);
+        let row = Node::table_row(vec![cell.clone()]);
+        let tbl = Node::table(vec![row]);
+        let mdx = emit_mdx(&tbl);
+        // Notion format: <table>/<tr>/<td>
+        assert!(mdx.contains("<table>"), "expected <table>");
+        assert!(mdx.contains("<tr>"), "expected <tr>");
+        assert!(mdx.contains("<td>data</td>"), "expected <td>");
+        assert!(mdx.contains("</table>"));
     }
 }

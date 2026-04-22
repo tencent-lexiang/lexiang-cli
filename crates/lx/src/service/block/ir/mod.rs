@@ -94,7 +94,7 @@ pub enum NodeType {
     Link {
         href: String,
     },
-    /// 块引用（向后兼容，MCP 中无对应，用于 `block_quote` 映射）
+    /// 块引用（对应 Notion quote block）
     BlockQuote,
     /// Math 公式（Phase 2）
     MathBlock {
@@ -163,12 +163,6 @@ impl InlineStyle {
             && self.text_color.is_none()
             && self.background_color.is_none()
     }
-
-    /// 判断是否有任何非默认样式（兼容旧接口）
-    #[deprecated(note = "use is_plain() instead")]
-    pub fn has_any_style(&self) -> bool {
-        !self.is_plain()
-    }
 }
 
 /// 块级样式（对应 MCP `BlockStyle`）
@@ -192,8 +186,6 @@ pub struct BlockAttrs {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub block_color: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub border_color: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub width: Option<String>,
@@ -204,6 +196,9 @@ pub struct BlockAttrs {
 /// 文档树节点
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct Node {
+    /// 块唯一标识符 — UUID v4 字符串（来自 Block JSON 或自动生成）
+    #[serde(default)]
+    pub id: Option<String>,
     pub node_type: NodeType,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
@@ -289,6 +284,7 @@ pub struct TaskDueAt {
 impl Node {
     pub fn document(children: Vec<Node>) -> Self {
         Self {
+            id: None,
             node_type: NodeType::Document,
             text: None,
             attrs: Default::default(),
@@ -318,6 +314,7 @@ impl Node {
 
     pub fn text(content: impl Into<String>, style: Option<InlineStyle>) -> Self {
         Self {
+            id: None,
             node_type: NodeType::Text,
             text: Some(content.into()),
             attrs: Default::default(),
@@ -361,6 +358,7 @@ impl Node {
 
     pub fn paragraph(inlines: Vec<Node>) -> Self {
         Self {
+            id: None,
             node_type: NodeType::Paragraph,
             text: None,
             attrs: Default::default(),
@@ -391,6 +389,7 @@ impl Node {
     pub fn heading(level: u8, inlines: Vec<Node>) -> Self {
         assert!((1..=6).contains(&level));
         Self {
+            id: None,
             node_type: NodeType::Heading { level },
             text: None,
             attrs: Default::default(),
@@ -421,6 +420,7 @@ impl Node {
     /// Callout — 容器类型，内容在 children 中
     pub fn callout(color: Option<&str>, icon: Option<&str>, children: Vec<Node>) -> Self {
         Self {
+            id: None,
             node_type: NodeType::Callout {
                 color: color.map(String::from),
                 icon: icon.map(String::from),
@@ -453,6 +453,7 @@ impl Node {
 
     pub fn quote(inlines: Vec<Node>) -> Self {
         Self {
+            id: None,
             node_type: NodeType::BlockQuote,
             text: None,
             attrs: Default::default(),
@@ -482,6 +483,7 @@ impl Node {
 
     pub fn bullet_item(inlines: Vec<Node>) -> Self {
         Self {
+            id: None,
             node_type: NodeType::BulletedList,
             text: None,
             attrs: Default::default(),
@@ -511,6 +513,7 @@ impl Node {
 
     pub fn numbered_item(inlines: Vec<Node>) -> Self {
         Self {
+            id: None,
             node_type: NodeType::NumberedList,
             text: None,
             attrs: Default::default(),
@@ -541,6 +544,7 @@ impl Node {
     /// Task — 支持名称和完成状态
     pub fn task(done: bool, name: impl Into<String>) -> Self {
         Self {
+            id: None,
             node_type: NodeType::Task { done, name: None },
             text: None,
             attrs: Default::default(),
@@ -570,6 +574,7 @@ impl Node {
 
     pub fn code_block(language: Option<&str>, code: &str) -> Self {
         Self {
+            id: None,
             node_type: NodeType::CodeBlock {
                 language: language.map(String::from),
             },
@@ -601,6 +606,7 @@ impl Node {
 
     pub fn divider() -> Self {
         Self {
+            id: None,
             node_type: NodeType::Divider,
             text: None,
             attrs: Default::default(),
@@ -630,6 +636,7 @@ impl Node {
 
     pub fn image(file_id: Option<&str>, caption: Option<&str>) -> Self {
         Self {
+            id: None,
             node_type: NodeType::Image {
                 file_id: file_id.map(String::from),
                 caption: caption.map(String::from),
@@ -665,6 +672,7 @@ impl Node {
 
     pub fn table(rows: Vec<Node>) -> Self {
         Self {
+            id: None,
             node_type: NodeType::Table,
             text: None,
             attrs: Default::default(),
@@ -694,6 +702,7 @@ impl Node {
 
     pub fn table_row(cells: Vec<Node>) -> Self {
         Self {
+            id: None,
             node_type: NodeType::TableRow,
             text: None,
             attrs: Default::default(),
@@ -723,6 +732,7 @@ impl Node {
 
     pub fn table_cell(inlines: Vec<Node>) -> Self {
         Self {
+            id: None,
             node_type: NodeType::TableCell {
                 align: None,
                 background_color: None,
@@ -758,6 +768,7 @@ impl Node {
 
     pub fn column_list(columns: Vec<Node>) -> Self {
         Self {
+            id: None,
             node_type: NodeType::ColumnList,
             text: None,
             attrs: Default::default(),
@@ -787,6 +798,7 @@ impl Node {
 
     pub fn column(width_ratio: Option<f64>, children: Vec<Node>) -> Self {
         Self {
+            id: None,
             node_type: NodeType::Column { width_ratio },
             text: None,
             attrs: Default::default(),
@@ -816,6 +828,7 @@ impl Node {
 
     pub fn link(href: &str, inlines: Vec<Node>) -> Self {
         Self {
+            id: None,
             node_type: NodeType::Link {
                 href: href.to_string(),
             },
@@ -847,6 +860,7 @@ impl Node {
 
     pub fn toggle(inlines: Vec<Node>) -> Self {
         Self {
+            id: None,
             node_type: NodeType::Toggle,
             text: None,
             attrs: Default::default(),
@@ -876,6 +890,7 @@ impl Node {
 
     pub fn mermaid(code: &str) -> Self {
         Self {
+            id: None,
             node_type: NodeType::Mermaid {
                 content: code.to_string(),
             },
@@ -907,6 +922,7 @@ impl Node {
 
     pub fn plantuml(code: &str) -> Self {
         Self {
+            id: None,
             node_type: NodeType::PlantUml {
                 content: code.to_string(),
             },
@@ -934,6 +950,12 @@ impl Node {
             width: None,
             height: None,
         }
+    }
+
+    /// Set block ID (chainable builder-style)
+    pub fn with_id(mut self, id: impl Into<String>) -> Self {
+        self.id = Some(id.into());
+        self
     }
 
     pub fn plain_content(&self) -> String {

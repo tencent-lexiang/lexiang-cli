@@ -1,7 +1,7 @@
 //! `DocIR` ↔ Block Adapter
 //!
 //! Converts between `DocIR` (intermediate representation) and MCP Block JSON.
-//! Aligned with xiaokeai MCP Server's `block_create_block_descendant` schema.
+//! Aligned with Notion Enhanced Markdown Spec.
 //!
 //! - `ir_to_descendant()`: `DocIR` → full descendant JSON for MCP API
 //! - `block_to_ir()`: Block JSON (from MCP) → `DocIR`
@@ -11,39 +11,71 @@
 use super::ir::{InlineStyle, Node, NodeType};
 use crate::service::block::types::{Block, BlockType};
 
+/// Map `NodeType` to standard `block_type` string (consistent with `BlockType::as_str`)
+fn node_type_to_block_type(nt: &NodeType) -> String {
+    match nt {
+        NodeType::Paragraph => "paragraph".into(),
+        NodeType::Heading { level } => format!("h{}", level),
+        NodeType::BlockQuote => "quote".into(),
+        NodeType::Callout { .. } => "callout".into(),
+        NodeType::ColumnList => "column_list".into(),
+        NodeType::Column { .. } => "column".into(),
+        NodeType::Table => "table".into(),
+        NodeType::TableRow => "table_row".into(),
+        NodeType::TableCell { .. } => "table_cell".into(),
+        NodeType::BulletedList => "bullet_list".into(),
+        NodeType::NumberedList => "numbered_list".into(),
+        NodeType::Task { .. } => "task".into(),
+        NodeType::CodeBlock { .. } => "code".into(),
+        NodeType::Divider => "divider".into(),
+        NodeType::Image { .. } => "image".into(),
+        NodeType::Toggle => "toggle".into(),
+        NodeType::Mermaid { .. } => "mermaid".into(),
+        NodeType::PlantUml { .. } => "plantuml".into(),
+        NodeType::SmartSheet { .. } => "smartsheet".into(),
+        NodeType::Attachment { .. } => "attachment".into(),
+        NodeType::Video { .. } => "video".into(),
+        NodeType::Text | NodeType::Link { .. } | NodeType::MathBlock { .. } => "paragraph".into(),
+        NodeType::Document => "document".into(),
+    }
+}
+
 // ============================================================
 // Forward: DocIR → Block JSON (for block_create_block_descendant)
 // ============================================================
 
 /// Convert `DocIR` node tree to a complete descendant JSON structure.
 ///
-/// Output format matches MCP `block_create_block_descendant` schema:
-/// ```json
-/// {
-///   "block_type": "p",
-///   "content": { ... },
-///   "children": [ ... ]
-/// }
-/// ```
+/// Output uses standard `block_type` names consistent with `BlockType::as_str`.
 pub fn ir_to_descendant(node: &Node) -> serde_json::Value {
-    match &node.node_type {
-        NodeType::Document => ir_document(node),
-        _ => ir_block(node),
-    }
+    ir_block(node)
 }
 
 fn ir_document(node: &Node) -> serde_json::Value {
     let children: Vec<serde_json::Value> = node.children.iter().map(ir_block).collect();
     serde_json::json!({
         "type": "document",
+        "id": node.id.clone().unwrap_or_else(gen_block_id),
         "content": {},
         "children": children,
     })
 }
 
-/// Core conversion: single `DocIR` node → MCP Block JSON
+/// Generate a UUID v4 block id (google/uuid compatible)
+fn gen_block_id() -> String {
+    uuid::Uuid::new_v4().to_string()
+}
+
+/// Resolve block ID: use Node.id if set (from original Block JSON), otherwise generate UUID v4
+fn resolve_id(node: &Node) -> String {
+    node.id.clone().unwrap_or_else(gen_block_id)
+}
+
+/// Core conversion: single `DocIR` node → MCP Block JSON (with auto-generated id)
 fn ir_block(node: &Node) -> serde_json::Value {
-    match &node.node_type {
+    let block_id = resolve_id(node);
+
+    let mut result = match &node.node_type {
         NodeType::Paragraph => ir_paragraph(&node.children),
         NodeType::Heading { level } => ir_heading(*level, &node.children),
         NodeType::BlockQuote => ir_quote(&node.children),
@@ -70,8 +102,9 @@ fn ir_block(node: &Node) -> serde_json::Value {
             vertical_align.as_deref(),
             &node.children,
         ),
+        NodeType::Toggle => ir_toggle(&node.children),
 
-        // === Leaf types ===
+        // === Leaf types (no children) ===
         NodeType::BulletedList => ir_bullet_list(&node.children),
         NodeType::NumberedList => ir_numbered_list(&node.children),
         NodeType::Task { done, .. } => ir_task(*done, node.task_name.as_deref(), &node.children),
@@ -92,7 +125,6 @@ fn ir_block(node: &Node) -> serde_json::Value {
             *height,
             align.as_deref(),
         ),
-        NodeType::Toggle => ir_toggle(&node.children),
         NodeType::Mermaid { .. } | NodeType::PlantUml { .. } => ir_diagram(
             &node.node_type,
             node.diagram_content.as_deref().unwrap_or(""),
@@ -119,8 +151,21 @@ fn ir_block(node: &Node) -> serde_json::Value {
             // Wrap as paragraph
             ir_paragraph(std::slice::from_ref(node))
         }
-        NodeType::Document => ir_document(node),
-    }
+        NodeType::Document => {
+            let children: Vec<serde_json::Value> = node.children.iter().map(ir_block).collect();
+            serde_json::json!({
+                "type": "document",
+                "id": node.id.clone().unwrap_or_else(gen_block_id),
+                "content": {},
+                "children": children,
+            })
+        }
+    };
+
+    // Inject unique block ID
+    result["id"] = serde_json::json!(block_id);
+
+    result
 }
 
 // ---- Inline text conversion (MCP elements[] format) ----
@@ -218,24 +263,27 @@ fn ir_inline_element(node: &Node) -> Vec<serde_json::Value> {
 // ---- Block type converters (matching real MCP schema) ----
 
 fn ir_paragraph(inlines: &[Node]) -> serde_json::Value {
-    serde_json::json!({
-        "block_type": "p",
+    let result = serde_json::json!({
+        "block_type": "paragraph",
         "content": {
             "text": { "elements": ir_inlines(inlines) }
         },
         "children": []
-    })
+    });
+    // Block-level color would go here if MCP schema supports it
+    result
 }
 
 fn ir_heading(level: u8, inlines: &[Node]) -> serde_json::Value {
     let type_str = format!("h{}", level);
-    serde_json::json!({
+    let result = serde_json::json!({
         "block_type": type_str,
         "content": {
             "text": { "elements": ir_inlines(inlines) }
         },
         "children": []
-    })
+    });
+    result
 }
 
 fn ir_quote(inlines: &[Node]) -> serde_json::Value {
@@ -271,7 +319,7 @@ fn ir_callout(color: Option<&str>, icon: Option<&str>, children: &[Node]) -> ser
 
 fn ir_bullet_list(inlines: &[Node]) -> serde_json::Value {
     serde_json::json!({
-        "block_type": "bulleted_list",
+        "block_type": "bullet_list",
         "content": {
             "text": { "elements": ir_inlines(inlines) }
         },
@@ -530,7 +578,8 @@ pub fn block_to_ir(blocks: &[Block]) -> Node {
 }
 
 fn block_node_to_ir(block: &Block) -> Node {
-    match &block.block_type {
+    let id = block.id.clone();
+    let mut node = match &block.block_type {
         BlockType::Paragraph => {
             let inlines = extract_elements(block.content.get("text"));
             Node::paragraph(inlines)
@@ -662,7 +711,13 @@ fn block_node_to_ir(block: &Block) -> Node {
         BlockType::Attachment => Node::plain_text(block.text.as_deref().unwrap_or("[attachment]")),
         BlockType::Video => Node::plain_text(block.text.as_deref().unwrap_or("[video]")),
         BlockType::Unknown(s) => Node::plain_text(format!("[unknown block type: {s}]")),
+    };
+
+    // Preserve original block id from JSON
+    if !id.is_empty() {
+        node.id = Some(id);
     }
+    node
 }
 
 /// Extract inline Nodes from MCP `content.text.elements[]` or fallback to plain string
@@ -704,61 +759,6 @@ fn extract_element(value: &serde_json::Value) -> Option<Node> {
         inline_style,
         ..Default::default()
     })
-}
-
-/// Legacy: extract from old text[] format (backward compat)
-fn extract_element_legacy(value: &serde_json::Value) -> Option<Node> {
-    let t = value.get("type")?.as_str()?;
-    match t {
-        "text" => {
-            let text = value.get("text")?.as_str()?.to_string();
-            let bold = value.get("bold")?.as_bool().unwrap_or(false);
-            let italic = value
-                .get("italic")
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false);
-            let strike = value
-                .get("strikeThrough")
-                .or_else(|| value.get("strikethrough"))
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false);
-            let underline = value
-                .get("underline")
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false);
-
-            let style = if bold || italic || strike || underline {
-                Some(InlineStyle {
-                    bold,
-                    italic,
-                    underline,
-                    strike_through: strike,
-                    ..Default::default()
-                })
-            } else {
-                None
-            };
-
-            Some(Node {
-                node_type: NodeType::Text,
-                text: Some(text),
-                inline_style: style,
-                ..Default::default()
-            })
-        }
-        "mention" => Some(Node::plain_text(
-            value
-                .get("text")?
-                .as_str()
-                .unwrap_or("@unknown")
-                .to_string(),
-        )),
-        "equation" => Some(Node::plain_text(format!(
-            "${}$",
-            value.get("text")?.as_str().unwrap_or("")
-        ))),
-        _ => None,
-    }
 }
 
 fn extract_text_style(style_obj: &serde_json::Value) -> InlineStyle {
@@ -810,7 +810,7 @@ mod tests {
     fn test_ir_paragraph_to_json() {
         let node = Node::paragraph(vec![Node::plain_text("hello "), Node::bold("world")]);
         let json = ir_block(&node);
-        assert_eq!(json["block_type"], "p");
+        assert_eq!(json["block_type"], "paragraph");
         assert_eq!(
             json["content"]["text"]["elements"]
                 .as_array()
@@ -856,7 +856,7 @@ mod tests {
         assert_eq!(json["content"]["color"], "red");
         assert_eq!(json["content"]["icon"], "🚧");
         // Children should contain the paragraph inside
-        assert_eq!(json["children"][0]["block_type"], "p");
+        assert_eq!(json["children"][0]["block_type"], "paragraph");
     }
 
     #[test]
@@ -908,7 +908,7 @@ mod tests {
         let json = ir_block(&col);
         assert_eq!(json["block_type"], "column");
         assert_eq!(json["content"]["width_ratio"], 0.5);
-        assert_eq!(json["children"][0]["block_type"], "p");
+        assert_eq!(json["children"][0]["block_type"], "paragraph");
     }
 
     #[test]
@@ -926,7 +926,7 @@ mod tests {
         )])]);
         let json = ir_block(&node);
         assert_eq!(json["block_type"], "toggle");
-        assert_eq!(json["children"][0]["block_type"], "p");
+        assert_eq!(json["children"][0]["block_type"], "paragraph");
     }
 
     #[test]
@@ -939,7 +939,7 @@ mod tests {
         assert_eq!(json["type"], "document");
         assert_eq!(json["children"].as_array().unwrap().len(), 2);
         assert_eq!(json["children"][0]["block_type"], "h1");
-        assert_eq!(json["children"][1]["block_type"], "p");
+        assert_eq!(json["children"][1]["block_type"], "paragraph");
     }
 
     #[test]
@@ -948,10 +948,10 @@ mod tests {
 
 This is **important**.
 
-<Callout icon="🚧" borderColor="red">
+<callout icon="🚧" color="red">
 ## Warning
 Check before proceeding.
-</Callout>
+</callout>
 
 - [ ] Task A
 - [x] Task B
@@ -978,20 +978,14 @@ fn main() {}
 
         // Paragraph with bold
         let para = &children[1];
-        assert_eq!(para["block_type"], "p");
+        assert_eq!(para["block_type"], "paragraph");
         let inlines = para["content"]["text"]["elements"].as_array().unwrap();
         assert_eq!(inlines.len(), 3); // "This is ", bold("important"), "."
         assert_eq!(inlines[1]["text_run"]["text_style"]["bold"], true);
 
-        // Callout as container type
-        let callout_idx = children.iter().position(|c| {
-            c["block_type"] == "callout"
-                || (c["block_type"] == "quote" && c["content"].get("callout").is_some())
-        });
-        assert!(
-            callout_idx.is_some(),
-            "should have a callout/quote+callout block"
-        );
+        // Callout as container type (Notion format)
+        let callout_idx = children.iter().position(|c| c["block_type"] == "callout");
+        assert!(callout_idx.is_some(), "should have a <callout> block");
 
         // Todos
         let todos: Vec<_> = children
@@ -1085,5 +1079,155 @@ fn main() {}
         // Callout should have inner child
         assert_eq!(co.children.len(), 1);
         assert_eq!(co.children[0].node_type, NodeType::Paragraph);
+    }
+}
+#[cfg(test)]
+mod verify_ids {
+    use super::ir_to_descendant;
+    use crate::service::block::ir::Node;
+
+    #[test]
+    fn test_all_blocks_have_id() {
+        let doc = Node::document(vec![
+            Node::heading(1, vec![Node::plain_text("H1")]),
+            Node::callout(
+                Some("red"),
+                Some("🚧"),
+                vec![Node::paragraph(vec![Node::plain_text("inner")])],
+            ),
+            Node::toggle(vec![
+                Node::heading(2, vec![Node::bold("Toggle H2")]),
+                Node::paragraph(vec![Node::plain_text("toggle body")]),
+            ]),
+        ]);
+        let json = ir_to_descendant(&doc);
+
+        // Print actual structure for manual inspection
+        let json_str = serde_json::to_string_pretty(&json).unwrap();
+        // Use assert to force-print
+        let doc_id = json.get("id").and_then(|v| v.as_str()).unwrap_or("MISSING");
+        // UUID v4 format: 36 chars, contains hyphens, starts with hex
+        assert_eq!(
+            doc_id.len(),
+            36,
+            "UUID should be 36 chars, got len={}: {}",
+            doc_id.len(),
+            doc_id
+        );
+        assert!(
+            doc_id.contains('-') && doc_id.chars().all(|c| c.is_ascii_hexdigit() || c == '-'),
+            "Invalid UUID: {}",
+            doc_id
+        );
+
+        // Write to file for inspection
+        std::fs::write("/tmp/ir_output_test.json", &json_str).expect("write failed");
+
+        let children = json["children"].as_array().unwrap();
+        for (i, c) in children.iter().enumerate() {
+            let bid = c.get("id").and_then(|v| v.as_str()).unwrap_or("NO_ID");
+            let bt = c.get("block_type").and_then(|v| v.as_str()).unwrap_or("?");
+            let kids = c
+                .get("children")
+                .and_then(|v| v.as_array())
+                .map(std::vec::Vec::len)
+                .unwrap_or(0);
+            eprintln!("  [{}] {} [{}] children={}", bid, bt, i + 1, kids);
+            assert!(c.get("id").is_some(), "child[{}] missing id", i);
+
+            // Verify Callout inner child has id too
+            if bt == "callout" {
+                if let Some(inner) = c.get("children").and_then(|v| v.as_array()) {
+                    for (j, ic) in inner.iter().enumerate() {
+                        let iid = ic.get("id").and_then(|v| v.as_str()).unwrap_or("NO_ID");
+                        let ibt = ic.get("block_type").and_then(|v| v.as_str()).unwrap_or("?");
+                        eprintln!("      [{}] {} [{}.{}]", iid, ibt, i + 1, j + 1);
+                        assert!(ic.get("id").is_some(), "callout inner[{}] missing id", j);
+                    }
+                }
+            }
+            // Verify Toggle inner children have id
+            if bt == "toggle" {
+                if let Some(inner) = c.get("children").and_then(|v| v.as_array()) {
+                    for (j, ic) in inner.iter().enumerate() {
+                        let iid = ic.get("id").and_then(|v| v.as_str()).unwrap_or("NO_ID");
+                        let ibt = ic.get("block_type").and_then(|v| v.as_str()).unwrap_or("?");
+                        eprintln!("      [{}] {} [{}.{}]", iid, ibt, i + 1, j + 1);
+                        assert!(ic.get("id").is_some(), "toggle inner[{}] missing id", j);
+                    }
+                }
+            }
+        }
+    }
+}
+#[cfg(test)]
+mod uuid_roundtrip {
+    use super::super::adapter::{block_to_ir, ir_to_descendant};
+    use super::super::ir::Node;
+    use crate::service::block::{Block, BlockType};
+
+    #[test]
+    fn test_block_to_ir_preserves_id() {
+        let block = Block {
+            id: "12345678".to_string(),
+            block_type: BlockType::H2,
+            text: Some("Test Heading".to_string()),
+            content: serde_json::json!({"text": "Test Heading"}),
+            children: vec![],
+        };
+        let doc = block_to_ir(std::slice::from_ref(&block));
+        // Original numeric id should be preserved in Node
+        assert_eq!(doc.children[0].id.as_deref(), Some("12345678"));
+
+        // Round-trip back to JSON should keep same id
+        let json = ir_to_descendant(&doc);
+        assert_eq!(json["children"][0]["id"].as_str().unwrap(), "12345678");
+        println!("Original id preserved: {}", json["children"][0]["id"]);
+    }
+
+    #[test]
+    fn test_new_blocks_get_uuid() {
+        let doc = Node::document(vec![Node::plain_text("new")]);
+        let json = ir_to_descendant(&doc);
+        let doc_id = json["id"].as_str().unwrap();
+        // Should be UUID v4 format (36 chars)
+        assert_eq!(doc_id.len(), 36, "Expected UUID v4 format, got: {}", doc_id);
+        println!("Generated UUID: {}", doc_id);
+    }
+}
+#[cfg(test)]
+mod emitter_id_test {
+    use super::super::adapter::block_to_ir;
+    use crate::service::block::mdx::emit_mdx;
+    use crate::service::block::{Block, BlockType};
+
+    #[test]
+    fn test_emitter_outputs_block_id() {
+        // Block with numeric original id
+        let block = Block {
+            id: "98765".to_string(),
+            block_type: BlockType::Callout,
+            text: None,
+            content: serde_json::json!({"callout": true, "color": "red", "icon": "🚧"}),
+            children: vec![],
+        };
+
+        let doc = block_to_ir(std::slice::from_ref(&block));
+        assert_eq!(doc.children[0].id.as_deref(), Some("98765"));
+
+        // After Notion alignment: id is NOT emitted in MDX output (Notion format uses no id attr)
+        // IR preserves the id internally, but emitter does not render it
+        let mdx = emit_mdx(&doc);
+        println!("MDX output:\n{}", mdx);
+        assert!(
+            mdx.contains("<callout"),
+            "MDX should contain <callout>, got:\n{}",
+            mdx
+        );
+        assert!(
+            mdx.contains("color=\"red\""),
+            "MDX should contain color=red, got:\n{}",
+            mdx
+        );
     }
 }

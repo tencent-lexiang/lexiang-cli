@@ -45,7 +45,7 @@ impl BlockType {
     /// 从 MCP 返回的 type 字符串解析
     pub fn from_str(s: &str) -> Self {
         match s {
-            "paragraph" | "text" | "" => Self::Paragraph,
+            "paragraph" | "text" | "" | "p" => Self::Paragraph,
             "h1" => Self::H1,
             "h2" => Self::H2,
             "h3" => Self::H3,
@@ -55,9 +55,9 @@ impl BlockType {
             "table" => Self::Table,
             "table_row" => Self::TableRow,
             "table_cell" => Self::TableCell,
-            "bullet_list" => Self::BulletList,
+            "bullet_list" | "bulleted_list" => Self::BulletList,
             "numbered_list" => Self::NumberedList,
-            "list_item" => Self::ListItem,
+            "list_item" | "listitem" => Self::ListItem,
             "quote" | "blockquote" => Self::Quote,
             "callout" => Self::Callout,
             "toggle" => Self::Toggle,

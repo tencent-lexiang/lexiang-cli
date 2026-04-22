@@ -12,13 +12,17 @@ use crate::service::block::ir::{InlineStyle, Node, NodeType};
 /// Parse MDX text into `DocIR` Node tree
 ///
 /// Uses `ParseOptions::mdx()` + GFM extensions for full feature coverage.
+/// Supports YAML frontmatter (stripped before markdown parsing).
 pub fn parse_mdx(input: &str) -> Result<Node, ParseError> {
+    // Strip YAML frontmatter if present:  ---\n... \n---
+    let (body, _frontmatter) = strip_frontmatter(input);
+
     let mut options = markdown::ParseOptions::mdx();
     options.constructs.gfm_strikethrough = true;
     options.constructs.gfm_table = true;
     options.constructs.gfm_task_list_item = true;
 
-    let ast = markdown::to_mdast(input, &options).map_err(|msg| ParseError::AtLine {
+    let ast = markdown::to_mdast(body, &options).map_err(|msg| ParseError::AtLine {
         line: 1,
         message: msg.to_string(),
     })?;
@@ -26,6 +30,27 @@ pub fn parse_mdx(input: &str) -> Result<Node, ParseError> {
     let mut counter = 0u64;
     let children = mdast_nodes_to_ir(ast.children().unwrap_or(&vec![]), &mut counter)?;
     Ok(Node::document(children))
+}
+
+/// Strip YAML frontmatter from input text.
+///
+/// Returns (`body_without_frontmatter`, `frontmatter_content`) tuple.
+/// If no frontmatter is found, returns (`original_input`, None).
+fn strip_frontmatter(input: &str) -> (&str, Option<String>) {
+    let trimmed = input.trim_start();
+    if !trimmed.starts_with("---") {
+        return (input, None);
+    }
+
+    // Find closing ---
+    if let Some(end_pos) = trimmed[3..].find("\n---") {
+        let after_open = &trimmed[3..];
+        let fm_content = after_open[..end_pos].trim().to_string();
+        let body = &after_open[end_pos + 5..]; // skip "\n---"
+        (body.trim_start(), Some(fm_content))
+    } else {
+        (input, None)
+    }
 }
 
 // ---- Error type ----
@@ -64,18 +89,48 @@ fn mdast_nodes_to_ir(
                 let name = el.name.as_deref().unwrap_or("").to_lowercase();
                 let attrs = extract_attributes(&el.attributes);
                 let inner = mdast_nodes_to_ir(&el.children, counter)?;
+
                 match name.as_str() {
-                    "callout" => {
-                        children.push(Node::callout(
-                            attrs
-                                .get("color")
-                                .or_else(|| attrs.get("border-color"))
-                                .map(std::string::String::as_str),
-                            attrs.get("icon").map(std::string::String::as_str),
-                            inner,
-                        ));
+                    // === Notion-aligned formats ===
+                    "details" => {
+                        // Notion toggle: <details color?="Color"><summary>text</summary>children</details>
+                        let has_summary = el
+                            .children
+                            .first()
+                            .map(|c| {
+                                let t = extract_plain_text_first(c);
+                                !t.is_empty()
+                            })
+                            .unwrap_or(false);
+                        let mut toggle_node = Node::toggle(inner);
+                        if has_summary {
+                            toggle_node.children.insert(
+                                0,
+                                Node::paragraph(
+                                    mdast_inline_to_ir_fallible(&el.children).unwrap_or_default(),
+                                ),
+                            );
+                        }
+                        if let Some(c) = attrs.get("color") {
+                            toggle_node.attrs.block_color = Some(c.clone());
+                        }
+                        children.push(toggle_node);
                     }
-                    "todo" | "task" => {
+                    "callout" => {
+                        // Notion callout: <callout icon? color?>
+                        let color = attrs.get("color").map(std::string::String::as_str);
+                        let icon = attrs.get("icon").map(std::string::String::as_str);
+                        children.push(Node::callout(color, icon, inner));
+                    }
+                    "columns" => {
+                        // Notion columns: <columns><column>...</column></columns>
+                        let cols: Vec<Node> = inner
+                            .into_iter()
+                            .map(|c| Node::column(/* width_ratio */ None, vec![c]))
+                            .collect();
+                        children.push(Node::column_list(cols));
+                    }
+                    "task" => {
                         let checked = attrs
                             .get("checked")
                             .is_some_and(|v| v == "true" || v == "1");
@@ -103,23 +158,16 @@ fn mdast_nodes_to_ir(
                         task_node.temp_id = Some(Node::next_temp_id(counter));
                         children.push(task_node);
                     }
-                    "columnlist" | "column-list" => {
-                        children.push(Node::column_list(inner));
-                    }
                     "column" => {
-                        let wr = attrs
-                            .get("width")
-                            .or_else(|| attrs.get("ratio"))
-                            .or_else(|| attrs.get("width-ratio"))
-                            .and_then(|s| {
-                                s.trim_end_matches('%').trim().parse::<f64>().ok().map(|v| {
-                                    if v > 1.0 {
-                                        v / 100.0
-                                    } else {
-                                        v
-                                    }
-                                })
-                            });
+                        let wr = attrs.get("width").and_then(|s| {
+                            s.trim_end_matches('%').trim().parse::<f64>().ok().map(|v| {
+                                if v > 1.0 {
+                                    v / 100.0
+                                } else {
+                                    v
+                                }
+                            })
+                        });
                         children.push(Node::column(wr, inner));
                     }
                     "mermaid" => {
@@ -136,10 +184,6 @@ fn mdast_nodes_to_ir(
                             .collect::<String>();
                         children.push(Node::plantuml(&code));
                     }
-                    "toggle" => {
-                        let inlines = mdast_inline_to_ir_fallible(&el.children).unwrap_or_default();
-                        children.push(Node::toggle(inlines));
-                    }
                     _ => {
                         // Unknown component: include inner content as children
                         children.extend(inner);
@@ -147,9 +191,12 @@ fn mdast_nodes_to_ir(
                 }
             }
             markdown::mdast::Node::Blockquote(bq) => {
-                // BlockQuote → map to Callout (our system doesn't have native Quote)
                 let inner = mdast_nodes_to_ir(&bq.children, counter)?;
-                children.push(Node::callout(None, None, inner));
+                if inner.is_empty() {
+                    children.push(Node::paragraph(vec![]));
+                } else {
+                    children.push(Node::quote(inner));
+                }
             }
             markdown::mdast::Node::List(list) => {
                 let items = mdast_list_items_to_ir(list, counter)?;
@@ -177,10 +224,7 @@ fn mdast_nodes_to_ir(
                     "callout" => {
                         let inner = mdast_nodes_to_ir(&el.children, counter)?;
                         children.push(Node::callout(
-                            attrs
-                                .get("color")
-                                .or_else(|| attrs.get("border-color"))
-                                .map(std::string::String::as_str),
+                            attrs.get("color").map(std::string::String::as_str),
                             attrs.get("icon").map(std::string::String::as_str),
                             inner,
                         ));
@@ -190,10 +234,6 @@ fn mdast_nodes_to_ir(
                             apply_style(&mut n, |s| s.bold = true);
                             result_from_children(&mut children, n);
                         }
-                    }
-                    "toggle" => {
-                        let inlines = mdast_inline_to_ir_fallible(&el.children).unwrap_or_default();
-                        children.push(Node::toggle(inlines));
                     }
                     _ => {
                         let inner = mdast_inline_to_ir_fallible(&el.children).unwrap_or_default();
@@ -365,52 +405,52 @@ fn mdast_inline_to_ir_fallible(nodes: &[markdown::mdast::Node]) -> Option<Vec<No
                     "callout" => {
                         let inner = mdast_inline_to_ir_fallible(&el.children).unwrap_or_default();
                         result.push(Node::callout(
-                            attrs
-                                .get("color")
-                                .or_else(|| attrs.get("border-color"))
-                                .map(std::string::String::as_str),
+                            attrs.get("color").map(std::string::String::as_str),
                             attrs.get("icon").map(std::string::String::as_str),
                             inner,
                         ));
                     }
-                    "todo" | "task" => {
-                        let checked = attrs
-                            .get("checked")
-                            .is_some_and(|v| v == "true" || v == "1");
-                        let inner = mdast_inline_to_ir_fallible(&el.children).unwrap_or_default();
-                        let name_val = attrs
-                            .get("name")
-                            .cloned()
-                            .or_else(|| inner.first().and_then(|n| n.text.clone()))
-                            .unwrap_or_default();
-                        let mut task_node = Node::task(checked, name_val);
-                        task_node.children = inner;
-                        result.push(task_node);
-                    }
-                    "toggle" => {
-                        let inner = mdast_inline_to_ir_fallible(&el.children).unwrap_or_default();
-                        result.push(Node::toggle(inner));
-                    }
                     "column" => {
-                        let wr = attrs
-                            .get("width")
-                            .or_else(|| attrs.get("ratio"))
-                            .or_else(|| attrs.get("width-ratio"))
-                            .and_then(|s| {
-                                s.trim_end_matches('%').trim().parse::<f64>().ok().map(|v| {
-                                    if v > 1.0 {
-                                        v / 100.0
-                                    } else {
-                                        v
-                                    }
-                                })
-                            });
+                        let wr = attrs.get("width").and_then(|s| {
+                            s.trim_end_matches('%').trim().parse::<f64>().ok().map(|v| {
+                                if v > 1.0 {
+                                    v / 100.0
+                                } else {
+                                    v
+                                }
+                            })
+                        });
                         let inner = mdast_inline_to_ir_fallible(&el.children).unwrap_or_default();
                         result.push(Node::column(wr, inner));
                     }
                     "mark" => {
                         for mut n in mdast_inline_to_ir_fallible(&el.children).unwrap_or_default() {
                             apply_style(&mut n, |s| s.bold = true);
+                            result.push(n);
+                        }
+                    }
+                    "span" => {
+                        // Notion <span underline color="...">text</span>
+                        let underline = attrs
+                            .get("underline")
+                            .is_some_and(|v| v == "true" || v == "1");
+                        let color = attrs.get("color").cloned();
+                        for mut n in mdast_inline_to_ir_fallible(&el.children).unwrap_or_default() {
+                            apply_style(&mut n, |s| {
+                                if underline {
+                                    s.underline = true;
+                                }
+                                if let Some(ref c) = color {
+                                    s.text_color = Some(c.clone());
+                                    s.background_color = Some(c.clone()); // Notion span uses single color attr
+                                                                          // Clear one since we only have one field to store
+                                    if c.trim().ends_with("_bg") || c.contains("_bg") {
+                                        s.text_color = None;
+                                    } else {
+                                        s.background_color = None;
+                                    }
+                                }
+                            });
                             result.push(n);
                         }
                     }
@@ -466,6 +506,25 @@ fn extract_attributes(
 
 // ---- Helpers ----
 
+/// Extract plain text from first Text child node (for summary extraction)
+fn extract_plain_text_first(node: &markdown::mdast::Node) -> String {
+    match node {
+        markdown::mdast::Node::Paragraph(p) => p
+            .children
+            .iter()
+            .find_map(|c| match c {
+                markdown::mdast::Node::Text(t) => Some(t.value.clone()),
+                _ => None,
+            })
+            .unwrap_or_default(),
+        markdown::mdast::Node::Text(t) => t.value.clone(),
+        _ => node
+            .children()
+            .and_then(|children| children.first().map(extract_plain_text_first))
+            .unwrap_or_default(),
+    }
+}
+
 fn node_children(node: &markdown::mdast::Node) -> Vec<markdown::mdast::Node> {
     match node {
         markdown::mdast::Node::Paragraph(p) => p.children.clone(),
@@ -510,15 +569,15 @@ mod tests {
 
     #[test]
     fn test_callout_container() {
-        let mdx = r#"<Callout icon="🚧" color="red">
+        // Notion format: lowercase <callout color>
+        let mdx = r#"<callout icon="🚧" color="red">
     ## Warning
     Check before proceeding.
-</Callout>"#;
+</callout>"#;
         let doc = parse_mdx(mdx).unwrap();
         assert_eq!(doc.children.len(), 1);
         let co = &doc.children[0];
         assert!(matches!(co.node_type, NodeType::Callout { .. }));
-        // Callout should be a CONTAINER with children, not flat text
         assert!(!co.children.is_empty(), "callout must have children");
         assert_eq!(co.callout_color.as_deref(), Some("red"));
         assert_eq!(co.callout_icon.as_deref(), Some("🚧"));
@@ -596,12 +655,14 @@ mod tests {
 
     #[test]
     fn test_block_quote_maps_to_callout() {
+        // Notion: native > quotes → BlockQuote
         let doc = parse_mdx("> A quoted message").unwrap();
         assert_eq!(doc.children.len(), 1);
-        assert!(matches!(
+        assert!(
+            matches!(doc.children[0].node_type, NodeType::BlockQuote),
+            "got: {:?}",
             doc.children[0].node_type,
-            NodeType::Callout { .. }
-        ));
+        );
     }
 
     #[test]
@@ -617,22 +678,22 @@ mod tests {
 
     #[test]
     fn test_column_list() {
-        let mdx = r#"<ColumnList>
-<Column>
+        // Notion format: <columns><column>
+        let mdx = r#"<columns>
+<column>
 ### Left
 Left content
-</Column>
-<Column ratio={0.5}>
+</column>
+<column>
 ### Right
 Right content
-</Column>
-</ColumnList>"#;
+</column>
+</columns>"#;
         let doc = parse_mdx(mdx).unwrap();
         assert_eq!(doc.children.len(), 1);
         assert!(matches!(doc.children[0].node_type, NodeType::ColumnList));
         let cl = &doc.children[0];
         assert_eq!(cl.children.len(), 2);
-        assert_eq!(cl.children[1].column_width_ratio, Some(0.5));
     }
 
     #[test]
@@ -653,13 +714,15 @@ Right content
 
     #[test]
     fn test_toggle() {
-        // Single-line <Toggle> is parsed as inline JSX within a Paragraph in MDX mode
-        let mdx = "<Toggle>Click me</Toggle>";
+        // Notion toggle: <details> must be on its own line (flow element)
+        let mdx = "<details>\n<summary>Click to expand</summary>\nHidden content\n</details>";
         let doc = parse_mdx(mdx).unwrap();
         assert!(!doc.children.is_empty());
-        // Find toggle node anywhere in tree
         let toggles = doc.find_all(&NodeType::Toggle);
-        assert!(!toggles.is_empty(), "should have a Toggle node");
+        assert!(
+            !toggles.is_empty(),
+            "should have a Toggle node from <details>"
+        );
     }
 
     #[test]
@@ -692,10 +755,10 @@ Right content
 
 This document describes **MDX** converter.
 
-<Callout icon="🚧" color="red">
+<callout icon="🚧" color="red">
 ## Note
 Check before proceeding.
-</Callout>
+</callout>
 
 ## Features
 
@@ -747,5 +810,37 @@ fn hello() {}
             checked_task.unwrap().task_name.as_deref(),
             Some("Callout support")
         );
+    }
+
+    #[test]
+    fn test_frontmatter_stripped() {
+        // YAML frontmatter should be stripped, not parsed as content
+        let input = r#"---
+title: 测试文档
+author: test
+---
+
+# Real Content
+
+**bold** text
+"#;
+        let doc = parse_mdx(input).unwrap();
+
+        // Should have exactly 2 children: H1 + paragraph (NOT divider/h2 for frontmatter)
+        assert_eq!(
+            doc.children.len(),
+            2,
+            "frontmatter should produce 0 blocks, got {} children",
+            doc.children.len()
+        );
+
+        // First child should be heading
+        assert!(matches!(
+            doc.children[0].node_type,
+            NodeType::Heading { level: 1, .. }
+        ));
+
+        // Second should be paragraph with bold
+        assert!(matches!(doc.children[1].node_type, NodeType::Paragraph));
     }
 }
