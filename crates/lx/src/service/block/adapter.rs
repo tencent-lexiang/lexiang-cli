@@ -14,7 +14,10 @@ use crate::service::block::types::{Block, BlockType};
 /// Map `NodeType` to standard `block_type` string (consistent with `BlockType::as_str`)
 fn node_type_to_block_type(nt: &NodeType) -> String {
     match nt {
-        NodeType::Paragraph => "paragraph".into(),
+        NodeType::Paragraph
+        | NodeType::Text
+        | NodeType::Link { .. }
+        | NodeType::MathBlock { .. } => "paragraph".into(),
         NodeType::Heading { level } => format!("h{}", level),
         NodeType::BlockQuote => "quote".into(),
         NodeType::Callout { .. } => "callout".into(),
@@ -35,7 +38,6 @@ fn node_type_to_block_type(nt: &NodeType) -> String {
         NodeType::SmartSheet { .. } => "smartsheet".into(),
         NodeType::Attachment { .. } => "attachment".into(),
         NodeType::Video { .. } => "video".into(),
-        NodeType::Text | NodeType::Link { .. } | NodeType::MathBlock { .. } => "paragraph".into(),
         NodeType::Document => "document".into(),
     }
 }

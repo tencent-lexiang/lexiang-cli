@@ -4,8 +4,8 @@
 //! Output aligned with Notion Enhanced Markdown Specification:
 //! - Lowercase component tags: `<callout>`, `<details>`, `<columns>`, `<column>`, `<table>`
 //! - Block-level color via `{color="Color"}` attribute suffix
-//! - Inline styles: `<Mark bold>`, `<span underline>`, `<span color>
-//! - Quote uses native `> {color}` syntax (not mapped to callout)
+//! - Inline styles: `<Mark bold>`, `<span underline>`, `<span color>`
+//! - Quote uses native `>` syntax (not mapped to callout)
 
 #![allow(dead_code)]
 
