@@ -133,7 +133,7 @@ pub enum ToolsCommands {
         #[arg(short, long, default_value = "table")]
         format: String,
     },
-    /// Output full schema JSON (for `OpenClaw` and other integrations)
+    /// Output full schema JSON (for editor integrations)
     Schema,
     /// Sync schema from MCP Server and write to schemas/lexiang.json (development self-bootstrap)
     SyncEmbedded,

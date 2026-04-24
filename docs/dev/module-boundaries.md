@@ -135,7 +135,7 @@ lx space list_spaces → 解析 namespace="space", subcommand="list_spaces"
 | `handle_sync` | 从 MCP Server 同步 schema 到本地 |
 | `handle_categories` | 列出 tool 分类 |
 | `handle_list` | 列出某分类下的工具 |
-| `handle_schema` | 输出完整 schema JSON（给 OpenClaw 用） |
+| `handle_schema` | 输出完整 schema JSON（给编辑器集成用） |
 | `handle_sync_embedded` | 开发用：同步 schema 到 `schemas/lexiang.json`（编译嵌入） |
 | `handle_sync_unlisted` | 同步未列出的 tool schema |
 

@@ -18,7 +18,7 @@ metadata:
 - 用户说"编辑某个页面"/"修改某个章节"/"改表格"
 - 用户说"在文档里插入内容"/"追加内容"
 - 用户说"替换某个标题下的内容"/"导入 markdown 到文档"
-- Agent 需要对文档进行多次修改（OpenClaw 场景）
+- Agent 需要对文档进行多次修改
 
 **禁止在本 skill 中执行：**
 
@@ -26,7 +26,7 @@ metadata:
 - **不要推送修改到远程**：用户说"推送"/"commit"/"push" → **立即切换到 lx-git skill**
 - **不要浏览目录结构**：用户说"浏览知识库"/"看看目录" → **立即切换到 lx-sh skill**
 
-## ⚡ OpenClaw / Agent 工作流
+## ⚡ Agent 工作流
 
 当 Agent 需要编辑文档时，遵循以下标准流程：
 
@@ -197,7 +197,7 @@ MDX 格式参考: [mdx-reference.md](references/mdx-reference.md)
 
 ## 典型组合流程
 
-### Agent 编辑文档的标准流程（OpenClaw 场景）
+### Agent 编辑文档的标准流程
 
 ```bash
 # 1. 确认目标页面（从上下文或搜索获得 entry_id）

@@ -92,7 +92,7 @@ pub fn handle_list(category: Option<&str>, format: &str) -> Result<()> {
     Ok(())
 }
 
-/// 输出完整 schema JSON (用于 `OpenClaw` 等集成)
+/// 输出完整 schema JSON (用于编辑器集成)
 pub fn handle_schema() -> Result<()> {
     let manager = SchemaManager::load_from_runtime();
 

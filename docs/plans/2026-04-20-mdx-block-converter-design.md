@@ -394,8 +394,6 @@ crates/lx/src/cmd/block/
 ```text
 skills/lx-block/references/
 └── mdx-reference.md     # 新增：MDX 语义参考文档
-packages/openclaw/skills/lx-block/
-└── references/mdx-reference.md  # 同步
 ```
 
 **任务清单**：

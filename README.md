@@ -2,15 +2,14 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-乐享知识库工具集，包含 **3 个独立产品**：
+乐享知识库工具集，包含 **2 个独立产品**：
 
 | 产品 | 说明 | 安装方式 | 更新方式 |
 |------|------|----------|----------|
 | **lx CLI** | 命令行工具，虚拟 Shell / Git 版本化管理 / 动态命令 | 安装脚本 / cargo / Release | 自动检查（24h） |
 | **VS Code 扩展** | VS Code 知识库浏览与编辑插件 | Release 下载 .vsix | 自动检查（4h） |
-| **OpenClaw 插件** | OpenClaw 平台的知识库集成插件 | npm / openclaw CLI | openclaw plugins update |
 
-> 三个产品共享同一仓库，通过不同的 Release Tag 独立发布：`cli-v*`、`vscode-v*`、`openclaw-v*`。
+> 两个产品共享同一仓库，通过不同的 Release Tag 独立发布：`cli-v*`、`vscode-v*`。
 
 ---
 
@@ -79,30 +78,6 @@ code --install-extension lefs-vscode-*.vsix
 或在 VS Code 中：Extensions → `...` → Install from VSIX...
 
 扩展启动后每 4 小时自动从 GitHub Release 检查更新，有新版本时提示一键更新。
-
-### 3. OpenClaw 插件
-
-为 OpenClaw 平台提供乐享知识库集成能力。
-
-```bash
-# 安装
-openclaw plugins install @tencent-lexiang/openclaw-lexiang
-
-# 交互式配置（自动安装 lx CLI + 配置 Token）
-openclaw onboard
-```
-
-也可以从 [npm](https://www.npmjs.com/package/@tencent-lexiang/openclaw-lexiang) 直接安装：
-
-```bash
-npm install -g @tencent-lexiang/openclaw-lexiang
-```
-
-更新：
-
-```bash
-openclaw plugins update @tencent-lexiang/openclaw-lexiang
-```
 
 ## 🚀 快速开始
 
