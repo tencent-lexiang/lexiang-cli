@@ -78,7 +78,7 @@ impl Emitter {
         match &node.node_type {
             NodeType::Document => self.emit_document(node, depth),
             NodeType::Paragraph => self.emit_paragraph(node, depth),
-            NodeType::Heading { level } => self.emit_heading(*level, node, depth),
+            NodeType::Heading { level, .. } => self.emit_heading(*level, node, depth),
             NodeType::BlockQuote => self.emit_quote(node, depth),
             NodeType::Callout { color, icon } => {
                 self.emit_callout(color.as_deref(), icon.as_deref(), node, depth);
@@ -175,6 +175,14 @@ impl Emitter {
     fn emit_heading(&mut self, level: u8, node: &Node, _depth: usize) {
         self.push(&"#".repeat(level as usize));
         self.push(" ");
+        // Toggle heading: # Title {toggle=true}
+        if let NodeType::Heading {
+            level: _,
+            is_toggle: true,
+        } = &node.node_type
+        {
+            self.push("{toggle=true}");
+        }
         self.maybe_emit_block_color(&node.attrs);
         self.emit_inline_children(&node.children);
     }
@@ -469,17 +477,18 @@ impl Emitter {
     }
 
     fn emit_styled_text(&mut self, text: &str, style: &InlineStyle) {
-        // Determine which wrapper to use
-        let has_bold_or_strike_or_code = style.bold || style.strike_through || style.inline_code;
-        let has_italic = style.italic;
-        let has_underline_or_color =
-            style.underline || style.text_color.is_some() || style.background_color.is_some();
         let is_plain = style.is_plain();
 
         if is_plain {
             self.push(text);
-        } else if has_underline_or_color && !has_bold_or_strike_or_code && !has_italic {
-            // Pure span-style attributes (underline, color)
+        } else if style.inline_code {
+            // Inline code: always use backticks (highest precedence)
+            self.push("`");
+            self.push(text);
+            self.push("`");
+        } else if style.underline || style.text_color.is_some() || style.background_color.is_some()
+        {
+            // Span-style attributes (underline, color) — must use <span>
             self.push("<span");
             if style.underline {
                 self.push(" underline=\"true\"");
@@ -501,34 +510,42 @@ impl Emitter {
                 }
             }
             self.push(">");
-            self.push(text);
+            // Recurse with span attrs stripped for inner content
+            let mut inner = style.clone();
+            inner.underline = false;
+            inner.text_color = None;
+            inner.background_color = None;
+            self.emit_styled_text_with_marks(text, &inner);
             self.push("</span>");
-        } else if has_bold_or_strike_or_code || has_italic {
-            // Mark-style for bold/strike/code/italic
-            self.push("<Mark");
-            if style.bold {
-                self.push(" bold");
-            }
-            if style.italic {
-                self.push(" italic");
-            }
-            if style.strike_through {
-                self.push(" strikeThrough");
-            }
-            if style.inline_code {
-                self.push(" inlineCode");
-            }
-            self.push(">");
-            self.push(text);
-            self.push("</Mark>");
-        } else if has_italic {
-            // Pure italic only → standard markdown *text*
-            self.push("*");
-            self.push(text);
-            self.push("*");
         } else {
-            // Underline/color only fallback
-            self.push(text);
+            // Standard Markdown: **bold**, *italic*, ~~strike~~
+            // Combinations nest correctly: ***bold+italic***
+            self.emit_styled_text_with_marks(text, style);
+        }
+    }
+
+    /// Emit styled text using standard Markdown markers (** * ~~, not <Mark>)
+    fn emit_styled_text_with_marks(&mut self, text: &str, style: &InlineStyle) {
+        if style.strike_through {
+            self.push("~~");
+        }
+        if style.bold {
+            self.push("**");
+        }
+        if style.italic {
+            self.push("*");
+        }
+
+        self.push(text);
+
+        if style.italic {
+            self.push("*");
+        }
+        if style.bold {
+            self.push("**");
+        }
+        if style.strike_through {
+            self.push("~~");
         }
     }
 
@@ -709,16 +726,13 @@ mod tests {
             italic_node,
         ])]);
         let mdx = emit_mdx(&node);
-        // Bold uses <Mark bold>, italic uses <Mark italic>
+        // Bold/italic use standard Markdown syntax
         assert!(
-            mdx.contains("<Mark bold>bold text</Mark>"),
-            "expected <Mark bold>, got: {mdx}"
+            mdx.contains("**bold text**"),
+            "expected **bold**, got: {mdx}"
         );
         assert!(mdx.contains(" and "));
-        assert!(
-            mdx.contains("<Mark italic>italic</Mark>") || mdx.contains("*italic*"),
-            "expected italic format, got: {mdx}"
-        );
+        assert!(mdx.contains("*italic*"), "expected *italic*, got: {mdx}");
     }
 
     #[test]

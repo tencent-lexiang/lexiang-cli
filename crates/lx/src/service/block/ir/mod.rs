@@ -42,6 +42,7 @@ pub enum NodeType {
     Paragraph,
     Heading {
         level: u8,
+        is_toggle: bool,
     }, // h1-h5
     BulletedList,
     NumberedList,
@@ -107,7 +108,14 @@ impl std::fmt::Display for NodeType {
         match self {
             Self::Document => write!(f, "Document"),
             Self::Paragraph => write!(f, "p"),
-            Self::Heading { level } => write!(f, "h{level}"),
+            Self::Heading {
+                level,
+                is_toggle: false,
+            } => write!(f, "h{level}"),
+            Self::Heading {
+                level: _,
+                is_toggle: true,
+            } => write!(f, "toggle_heading"),
             Self::BulletedList => write!(f, "bulleted_list"),
             Self::NumberedList => write!(f, "numbered_list"),
             Self::CodeBlock { .. } => write!(f, "code"),
@@ -390,7 +398,10 @@ impl Node {
         assert!((1..=6).contains(&level));
         Self {
             id: None,
-            node_type: NodeType::Heading { level },
+            node_type: NodeType::Heading {
+                level,
+                is_toggle: false,
+            },
             text: None,
             attrs: Default::default(),
             style: None,
@@ -1006,7 +1017,13 @@ mod tests {
         assert_eq!(p.children[0].plain_content(), "hello");
 
         let h2 = Node::heading(2, vec![Node::plain_text("title")]);
-        assert_eq!(h2.node_type, NodeType::Heading { level: 2 });
+        assert_eq!(
+            h2.node_type,
+            NodeType::Heading {
+                level: 2,
+                is_toggle: false
+            }
+        );
 
         let t = Node::task(true, "Buy milk");
         assert_eq!(

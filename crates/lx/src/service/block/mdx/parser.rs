@@ -13,6 +13,7 @@ use crate::service::block::ir::{InlineStyle, Node, NodeType};
 ///
 /// Uses `ParseOptions::mdx()` + GFM extensions for full feature coverage.
 /// Supports YAML frontmatter (stripped before markdown parsing).
+/// Post-processes parsed nodes to extract Notion block-level attributes like `{color="..."}`.
 pub fn parse_mdx(input: &str) -> Result<Node, ParseError> {
     // Strip YAML frontmatter if present:  ---\n... \n---
     let (body, _frontmatter) = strip_frontmatter(input);
@@ -29,7 +30,16 @@ pub fn parse_mdx(input: &str) -> Result<Node, ParseError> {
 
     let mut counter = 0u64;
     let children = mdast_nodes_to_ir(ast.children().unwrap_or(&vec![]), &mut counter)?;
-    Ok(Node::document(children))
+    let mut doc = Node::document(children);
+
+    // Post-process: extract block-level attributes like {color="..."} from trailing text
+    extract_block_attrs(&mut doc);
+
+    // Post-process: handle Notion-specific escape sequences
+    // In MDX mode, markdown-rs may not fully handle all escapes
+    process_notion_escapes(&mut doc);
+
+    Ok(doc)
 }
 
 /// Strip YAML frontmatter from input text.
@@ -42,12 +52,22 @@ fn strip_frontmatter(input: &str) -> (&str, Option<String>) {
         return (input, None);
     }
 
+    // Need at least "---\n" after opening
+    if trimmed.len() < 4 {
+        return (input, None);
+    }
+
     // Find closing ---
     if let Some(end_pos) = trimmed[3..].find("\n---") {
         let after_open = &trimmed[3..];
         let fm_content = after_open[..end_pos].trim().to_string();
-        let body = &after_open[end_pos + 5..]; // skip "\n---"
-        (body.trim_start(), Some(fm_content))
+        let body_start = end_pos + 5; // skip "\n---" (4 chars + 1 newline)
+        if body_start <= after_open.len() {
+            let body = &after_open[body_start..];
+            (body.trim_start(), Some(fm_content))
+        } else {
+            (input, None)
+        }
     } else {
         (input, None)
     }
@@ -301,8 +321,9 @@ fn mdast_list_items_to_ir(
                 }
                 items.push(task_node);
             } else {
-                // Regular list item
-                let inlines = mdast_inline_to_ir(&li.children)?;
+                // Regular list item — use mdast_nodes_to_ir (not mdast_inline_to_ir!)
+                // because li.children contains [Paragraph], not inline nodes directly.
+                let inlines = mdast_nodes_to_ir(&li.children, counter)?;
                 if list.ordered {
                     items.push(Node::numbered_item(inlines));
                 } else {
@@ -310,7 +331,7 @@ fn mdast_list_items_to_ir(
                 }
             }
         } else {
-            let inlines = mdast_inline_to_ir(&node_children(item))?;
+            let inlines = mdast_nodes_to_ir(&node_children(item), counter)?;
             if list.ordered {
                 items.push(Node::numbered_item(inlines));
             } else {
@@ -533,6 +554,281 @@ fn node_children(node: &markdown::mdast::Node) -> Vec<markdown::mdast::Node> {
     }
 }
 
+// ---- Block-level attribute extraction (Notion {color="..."} syntax) ----
+
+/// Post-process parsed `DocIR` to extract Notion block-level attributes from trailing text.
+///
+/// Notion Enhanced Markdown supports `{color="Color"}` at end of lines for:
+/// - Headings: `### Title {color="yellow"}`
+/// - Paragraphs: `Text {color="blue"}`
+/// - Quotes: `> Quoted text {color="red"}`
+/// - List items: `- Item {color="green"}`
+///
+/// This function scans leaf nodes and extracts the trailing `{key="val"}` pattern,
+/// setting it on `node.attrs.block_color` and removing it from the text content.
+///
+/// Note: In MDX mode, `{color="..."}` is parsed as `MdxTextExpression` by
+/// markdown-rs. We detect this pattern in both plain text AND expression nodes.
+fn extract_block_attrs(doc: &mut Node) {
+    extract_block_attrs_recursive(doc);
+}
+
+fn extract_block_attrs_recursive(node: &mut Node) {
+    // Only process leaf-level blocks that can have trailing attributes
+    let can_have_block_attr = matches!(
+        node.node_type,
+        NodeType::Paragraph
+            | NodeType::Heading { .. }
+            | NodeType::BulletedList
+            | NodeType::NumberedList
+            | NodeType::BlockQuote
+            | NodeType::Task { .. }
+    );
+
+    if can_have_block_attr {
+        try_extract_attr_from_children(node);
+    }
+
+    // Recurse into children
+    for child in &mut node.children {
+        extract_block_attrs_recursive(child);
+    }
+}
+
+/// Try to extract block attributes from a node's children.
+///
+/// Supported attributes:
+/// - `{color="Color"}` → `block_color`
+/// - `{toggle=true}` → `is_toggle` on Heading nodes
+///
+/// Two sources:
+/// 1. Trailing text containing embedded `{key="val"}` pattern
+/// 2. Trailing plain-text expression node like `{color="yellow"}` (MDX expression)
+///
+/// For container nodes (list items, quotes) whose content is wrapped in a Paragraph,
+/// we recursively check inner Paragraph children and propagate the attribute upward.
+fn try_extract_attr_from_children(node: &mut Node) -> bool {
+    // Try direct children first
+    if try_extract_attr_direct(node) {
+        return true;
+    }
+
+    // If direct extraction didn't work, check inside Paragraph children
+    // and propagate the extracted attribute UP to this node
+    for child in &mut node.children {
+        if matches!(child.node_type, NodeType::Paragraph)
+            && try_extract_attr_direct(child) {
+                // Propagate from inner Paragraph to outer container (list/quote)
+                if let Some(ref c) = child.attrs.block_color {
+                    node.attrs.block_color = Some(c.clone());
+                }
+                return true;
+            }
+    }
+
+    false
+}
+
+/// Try extracting attribute from a single node's immediate children.
+/// Returns true if an attribute was extracted.
+fn try_extract_attr_direct(node: &mut Node) -> bool {
+    // Strategy 1: Check last Text child for embedded {color="..."} or {toggle=...}
+    let last_text_idx = node.children.iter().rposition(|c| {
+        matches!(c.node_type, NodeType::Text) && c.text.as_ref().is_some_and(|t| !t.is_empty())
+    });
+
+    if let Some(idx) = last_text_idx {
+        let last_child = &node.children[idx];
+        if let Some(ref text) = last_child.text {
+            if let Some((cleaned, attr)) = strip_trailing_text_attr(text) {
+                match attr.key.as_str() {
+                    "color" => {
+                        node.attrs.block_color = Some(attr.value);
+                    }
+                    "toggle" => {
+                        if let NodeType::Heading {
+                            level: _,
+                            is_toggle,
+                        } = &mut node.node_type
+                        {
+                            *is_toggle =
+                                attr.value == "true" || attr.value.eq_ignore_ascii_case("true");
+                        }
+                    }
+                    _ => {}
+                }
+                let is_empty = cleaned.is_empty();
+                if is_empty {
+                    node.children.remove(idx);
+                    trim_last_text_trailing_ws(&mut node.children);
+                } else {
+                    let mut updated = node.children[idx].clone();
+                    updated.text = Some(cleaned);
+                    node.children[idx] = updated;
+                }
+                return true;
+            }
+        }
+    }
+
+    // Strategy 2: Check if last child is an MDX expression like {color="yellow"} or {toggle=true}
+    let last_expr_idx = node.children.iter().rposition(|c| {
+        matches!(c.node_type, NodeType::Text)
+            && c.text.as_ref().is_some_and(|t| {
+                t.starts_with('{') && t.ends_with('}') && !t.contains("\\{")
+            })
+    });
+
+    if let Some(idx) = last_expr_idx {
+        if let Some(ref expr_text) = node.children[idx].text {
+            let inner = &expr_text[1..expr_text.len() - 1]; // strip { and }
+            if let Some(attr) = parse_key_value_attr(inner) {
+                match attr.key.as_str() {
+                    "color" => {
+                        node.attrs.block_color = Some(attr.value);
+                    }
+                    "toggle" => {
+                        if let NodeType::Heading {
+                            level: _,
+                            is_toggle,
+                        } = &mut node.node_type
+                        {
+                            *is_toggle =
+                                attr.value == "true" || attr.value.eq_ignore_ascii_case("true");
+                        }
+                    }
+                    _ => {}
+                }
+                node.children.remove(idx); // Remove the expression node
+                trim_last_text_trailing_ws(&mut node.children);
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+struct BlockAttr {
+    key: String,
+    value: String,
+}
+
+/// Strip a trailing `{key="value"}` from within a text string.
+fn strip_trailing_text_attr(s: &str) -> Option<(String, BlockAttr)> {
+    let trimmed = s.trim_end();
+    if !trimmed.ends_with('}') {
+        return None;
+    }
+
+    let open_pos = trimmed.rfind('{')?;
+    let inner = &trimmed[open_pos + 1..trimmed.len() - 1];
+    let attr = parse_key_value_attr(inner)?;
+
+    let remaining = trimmed[..open_pos].trim_end().to_string();
+    Some((remaining, attr))
+}
+
+/// Parse `key="value"` string into `BlockAttr`.
+/// Supports: color, toggle
+fn parse_key_value_attr(s: &str) -> Option<BlockAttr> {
+    let eq_pos = s.find('=')?;
+    let key = s[..eq_pos].trim();
+    let value_raw = s[eq_pos + 1..].trim();
+
+    if !(value_raw.starts_with('"') && value_raw.ends_with('"'))
+        && !(value_raw.starts_with('\'') && value_raw.ends_with('\''))
+    {
+        return None;
+    }
+
+    let value = &value_raw[1..value_raw.len() - 1];
+
+    // Validate key is a known Notion block attribute
+    match key {
+        "color" | "toggle" => {}
+        _ => return None,
+    }
+
+    Some(BlockAttr {
+        key: key.to_string(),
+        value: value.to_string(),
+    })
+}
+
+/// Trim trailing whitespace from the last Text child's text content.
+/// If the result is empty, remove the child entirely.
+fn trim_last_text_trailing_ws(children: &mut Vec<Node>) {
+    if let Some(last) = children.last_mut() {
+        if let Some(ref mut t) = last.text {
+            *t = t.trim_end().to_string();
+            if t.is_empty() {
+                children.pop();
+            }
+        }
+    }
+}
+
+// ---- Notion escape sequence processing ----
+
+/// Characters that have special meaning in Notion Enhanced Markdown
+/// and can be escaped with `\` to produce a literal character.
+const NOTION_ESCAPABLES: &[char] = &[
+    '\\', '*', '~', '`', '$', '[', ']', '<', '>', '{', '}', '|', '^',
+];
+
+/// Process Notion-specific escape sequences in parsed `DocIR`.
+///
+/// In MDX mode, `{...}` is treated as JavaScript expressions by markdown-rs.
+/// When a user writes `\{color\}`, they want literal `{color}` text.
+/// Similarly for `\[`, `\]`, etc.
+///
+/// This post-processing step converts escaped markers to their literal forms
+/// in all Text nodes.
+fn process_notion_escapes(doc: &mut Node) {
+    process_notion_escapes_recursive(doc);
+}
+
+fn process_notion_escapes_recursive(node: &mut Node) {
+    // Process current node's text
+    if let Some(ref mut text) = node.text {
+        *text = unescape_notion_text(text);
+    }
+
+    // Recurse into children
+    for child in &mut node.children {
+        process_notion_escapes_recursive(child);
+    }
+}
+
+/// Convert Notion escape sequences in text to literal characters.
+///
+/// Handles: `\{` → `{`, `\}` → `}`, `\[` → `[`, `\]` → `]`, etc.
+/// Only processes escapes that were NOT already handled by markdown-rs.
+/// Standard Markdown escapes (like `\_`, `\*`) are handled by the parser
+/// and will NOT appear as literal backslash+char in our Text nodes.
+fn unescape_notion_text(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let chars: Vec<char> = text.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '\\' && i + 1 < chars.len() {
+            let next = chars[i + 1];
+            // Check if this is a Notion-specific escape that needs handling
+            let is_notion_escape =
+                matches!(next, '[' | ']' | '<' | '>' | '|' | '^') || next == '{' || next == '}';
+            if is_notion_escape {
+                result.push(next);
+                i += 2;
+                continue;
+            }
+        }
+        result.push(chars[i]);
+        i += 1;
+    }
+    result
+}
+
 // ---- Tests ----
 
 #[cfg(test)]
@@ -551,8 +847,20 @@ mod tests {
     fn test_heading() {
         let doc = parse_mdx("# Title\n\n## Subtitle").unwrap();
         assert_eq!(doc.children.len(), 2);
-        assert_eq!(doc.children[0].node_type, NodeType::Heading { level: 1 });
-        assert_eq!(doc.children[1].node_type, NodeType::Heading { level: 2 });
+        assert_eq!(
+            doc.children[0].node_type,
+            NodeType::Heading {
+                level: 1,
+                is_toggle: false
+            }
+        );
+        assert_eq!(
+            doc.children[1].node_type,
+            NodeType::Heading {
+                level: 2,
+                is_toggle: false
+            }
+        );
     }
 
     #[test]
@@ -837,10 +1145,77 @@ author: test
         // First child should be heading
         assert!(matches!(
             doc.children[0].node_type,
-            NodeType::Heading { level: 1, .. }
+            NodeType::Heading {
+                level: 1,
+                is_toggle: false
+            }
         ));
 
         // Second should be paragraph with bold
         assert!(matches!(doc.children[1].node_type, NodeType::Paragraph));
+    }
+
+    #[test]
+    fn test_block_color_heading() {
+        // Notion: ### Title {color="yellow"}
+        let doc = parse_mdx("### Yellow Heading {color=\"yellow\"}").unwrap();
+        assert_eq!(doc.children.len(), 1);
+        let h = &doc.children[0];
+        assert_eq!(
+            h.attrs.block_color.as_deref(),
+            Some("yellow"),
+            "block_color should be extracted"
+        );
+        assert_eq!(h.plain_content(), "Yellow Heading");
+    }
+
+    #[test]
+    fn test_block_color_paragraph() {
+        // Notion: text here {color="blue"}
+        let doc = parse_mdx("Some blue text {color=\"blue\"}").unwrap();
+        assert_eq!(doc.children.len(), 1);
+        let p = &doc.children[0];
+        assert_eq!(p.attrs.block_color.as_deref(), Some("blue"));
+        assert_eq!(p.plain_content(), "Some blue text");
+    }
+
+    #[test]
+    fn test_block_color_list_item() {
+        let doc = parse_mdx("- Red item {color=\"red\"}\n- Normal item").unwrap();
+        assert_eq!(doc.children.len(), 2);
+        let colored = &doc.children[0];
+        assert_eq!(colored.attrs.block_color.as_deref(), Some("red"));
+        assert_eq!(colored.plain_content(), "Red item");
+        // Second item should have no color
+        assert!(doc.children[1].attrs.block_color.is_none());
+    }
+
+    #[test]
+    fn test_block_color_quote() {
+        let doc = parse_mdx("> Important note {color=\"orange\"}").unwrap();
+        assert_eq!(doc.children.len(), 1);
+        let q = &doc.children[0];
+        assert_eq!(q.attrs.block_color.as_deref(), Some("orange"));
+    }
+
+    #[test]
+    fn test_no_false_positive_brace() {
+        // Braces in the middle of text should NOT be treated as attributes
+        let doc = parse_mdx("This has {some} braces in middle").unwrap();
+        assert_eq!(doc.children.len(), 1);
+        assert!(doc.children[0].attrs.block_color.is_none());
+        assert_eq!(
+            doc.children[0].plain_content(),
+            "This has {some} braces in middle"
+        );
+    }
+
+    #[test]
+    fn test_escaped_brace_literal() {
+        // Escaped brace (if we add escape support later)
+        // For now, \{color="..."} is literal since markdown-rs doesn't do our custom escaping
+        let doc = parse_mdx("Literal \\{color=\"yellow\"} text").unwrap();
+        // The backslash-brace stays as literal text; no color extracted
+        assert!(doc.children[0].attrs.block_color.is_none());
     }
 }

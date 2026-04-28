@@ -263,11 +263,17 @@ pub fn build_block_commands() -> Vec<Command> {
                     .required(true)
                     .help("Parent block ID"),
             )
+            .arg(
+                Arg::new("entry-id")
+                    .long("entry-id")
+                    .help("Entry ID (page ID, required for API)"),
+            )
             .arg(Arg::new("file").long("file").required(true).help("MDX/Markdown file path"))
             .arg(
                 Arg::new("chunk-size")
                     .long("chunk-size")
                     .default_value("20")
+                    .value_parser(clap::value_parser!(usize))
                     .help("Blocks per batch"),
             ),
         // ══════════════ 高级操作（保留） ══════════════
@@ -780,6 +786,7 @@ async fn handle_export(service: &BlockService, matches: &clap::ArgMatches) -> Re
 
 async fn handle_import(service: &BlockService, matches: &clap::ArgMatches) -> Result<()> {
     let block_id = matches.get_one::<String>("block-id").unwrap();
+    let entry_id = matches.get_one::<String>("entry-id");
     let file = matches.get_one::<String>("file").unwrap();
     let chunk_size = *matches.get_one::<usize>("chunk-size").unwrap();
 
@@ -790,8 +797,10 @@ async fn handle_import(service: &BlockService, matches: &clap::ArgMatches) -> Re
 
     match content_type {
         "mdx" => {
-            // 本地引擎：MDX → DocIR → ir_to_descendant() → 分批插入
-            service.import_mdx(block_id, &content, chunk_size).await?;
+            // 本地引擎：MDX → DocIR → ir_to_descendant() → 两阶段安全写入
+            service
+                .import_mdx(block_id, entry_id.map(std::string::String::as_str), &content, chunk_size)
+                .await?;
             println!(
                 "\u{2713} Imported from {} using local MDX engine (chunk_size={})",
                 file, chunk_size

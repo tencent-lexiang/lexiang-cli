@@ -237,55 +237,179 @@ impl BlockService {
         Ok(json)
     }
 
-    /// MDX 文本导入到指定父块（本地解析 + 分批插入）
+    /// MDX 文本导入到指定父块（两阶段安全写入）
     ///
-    /// 与 `import_markdown` 类似，但使用本地 MDX parser 而非 MCP 转换。
+    /// ## 设计说明
+    ///
+    /// `block_create_block_descendant` 有两个关键行为：
+    /// 1. `descendant` 参数是**块数组**，不是嵌套对象
+    /// 2. 创建的子块会**替换**父块的现有所有子块（不是追加！）
+    /// 3. 需要 `entry_id` 参数
+    /// 4. 嵌套 children 在创建时必须是**字符串 ID 数组**
+    ///
+    /// 因此采用**两阶段写入**：
+    /// **阶段 1**: 扁平化 `DocIR` 树，创建所有顶层块（children 为空），获取返回的 `block_id`
+    /// **阶段 2**: 对有子块的容器块（callout/toggle/columns 等），逐个用返回的 ID 创建子块
     pub async fn import_mdx(
         &self,
         parent_id: &str,
+        entry_id: Option<&str>,
         mdx_str: &str,
         chunk_size: usize,
     ) -> Result<()> {
-        let descendant = Self::mdx_to_blocks_local(mdx_str)?;
+        // 验证 entry_id
+        let eid = entry_id.ok_or_else(|| {
+            anyhow::anyhow!("entry_id is required for import_mdx. Use --entry-id <page_id>")
+        })?;
 
-        // 获取 children 数组
-        let children = descendant
-            .get("children")
-            .and_then(|c| c.as_array())
-            .cloned()
-            .unwrap_or_default();
+        // Phase 1: 解析 + 扁平化
+        let doc = parse_mdx(mdx_str)?;
+        let flat = FlattenDocIr::flatten(&doc);
 
-        if children.is_empty() {
-            // 没有子块，直接创建整个 descendant
-            self.mcp
-                .call_tool(
-                    "block_create_block_descendant",
-                    serde_json::json!({
-                        "block_id": parent_id,
-                        "descendant": descendant,
-                    }),
-                )
-                .await?;
+        eprintln!(
+            "[import_mdx] flattened: {} top-level blocks, {} container blocks with pending children",
+            flat.blocks.len(),
+            flat.containers.len()
+        );
+
+        if flat.blocks.is_empty() {
+            println!("  (empty document, nothing to import)");
             return Ok(());
         }
 
-        // 分块插入
-        for chunk in children.chunks(chunk_size) {
-            let chunk_descendant = serde_json::json!({
-                "children": chunk,
+        // Phase 2a: 分批创建顶层块（每批 chunk_size 个，children 全部为空）
+        let mut created_ids: Vec<String> = Vec::with_capacity(flat.blocks.len());
+        for (i, chunk) in flat.blocks.chunks(chunk_size).enumerate() {
+            let params = serde_json::json!({
+                "block_id": parent_id,
+                "entry_id": eid,
+                "descendant": chunk,  // 扁平块数组，每个块的 children: []
             });
+            eprintln!(
+                "[import_mdx] phase 2a: batch {}/{}, creating {} top-level blocks",
+                i + 1,
+                flat.blocks.len().div_ceil(chunk_size),
+                chunk.len()
+            );
 
-            self.mcp
-                .call_tool(
-                    "block_create_block_descendant",
-                    serde_json::json!({
-                        "block_id": parent_id,
-                        "descendant": chunk_descendant,
-                    }),
-                )
+            let result = self
+                .mcp
+                .call_tool("block_create_block_descendant", params)
                 .await?;
+
+            // 检查 API 错误
+            check_api_result(&result)?;
+
+            // 收集创建后的 block_id
+            if let Some(data) = result.get("data") {
+                if let Some(desc) = data.get("descendant") {
+                    collect_created_ids(desc, &mut created_ids);
+                } else if data.get("id").is_some() {
+                    created_ids.push(data["id"].as_str().unwrap_or("").to_string());
+                } else if let Some(arr) = data.get("children").and_then(|v| v.as_array()) {
+                    for item in arr.iter() {
+                        if let Some(id) = item
+                            .get("id")
+                            .or(item.get("block_id"))
+                            .and_then(|v| v.as_str())
+                        {
+                            created_ids.push(id.to_string());
+                        }
+                    }
+                }
+            }
         }
 
+        eprintln!(
+            "[import_mdx] phase 2a complete: created {} blocks",
+            created_ids.len()
+        );
+
+        // 如果没有容器块需要处理子块，直接完成
+        if flat.containers.is_empty() {
+            return Ok(());
+        }
+
+        // Phase 2b: 为容器块创建子块（递归处理嵌套容器）
+        // 建立 block 索引: flat_index -> created_block_id
+        // 注意：created_ids 的顺序与 flat.blocks 的顺序一致（API 按输入顺序返回）
+        let mut id_map: std::collections::HashMap<usize, String> = std::collections::HashMap::new();
+        for (i, _block_json) in flat.blocks.iter().enumerate() {
+            if i < created_ids.len() {
+                id_map.insert(i, created_ids[i].clone());
+            } else {
+                eprintln!("[import_mdx] warning: block {} has no returned ID", i);
+            }
+        }
+
+        // 处理每个容器的子块
+        for container_info in &flat.containers {
+            let parent_flat_idx = container_info.self_idx;
+            let child_indices = &container_info.child_indices;
+
+            // 查找父块的 API 返回 ID
+            let parent_api_id = match id_map.get(&parent_flat_idx) {
+                Some(id) => id.clone(),
+                None => {
+                    eprintln!(
+                        "[import_mdx] warning: no API ID for container at flat index {}, skipping children",
+                        parent_flat_idx
+                    );
+                    continue;
+                }
+            };
+
+            // 获取子块 JSON（已经是扁平格式）
+            let child_blocks: Vec<serde_json::Value> = child_indices
+                .iter()
+                .filter_map(|&idx| flat.blocks.get(idx).cloned())
+                .collect();
+
+            if child_blocks.is_empty() {
+                continue;
+            }
+
+            eprintln!(
+                "[import_mdx] phase 2b: creating {} children for container {} ({})",
+                child_blocks.len(),
+                parent_flat_idx,
+                parent_api_id
+            );
+
+            // 分批创建子块
+            for chunk in child_blocks.chunks(chunk_size) {
+                let params = serde_json::json!({
+                    "block_id": parent_api_id,
+                    "entry_id": eid,
+                    "descendant": chunk,
+                });
+
+                let result = self
+                    .mcp
+                    .call_tool("block_create_block_descendant", params)
+                    .await?;
+                check_api_result(&result)?;
+
+                // 记录子块 ID 到 id_map
+                if let Some(data) = result.get("data") {
+                    if let Some(desc) = data.get("descendant") {
+                        let before = created_ids.len();
+                        collect_created_ids(desc, &mut created_ids);
+                        let new_count = created_ids.len() - before;
+                        // 按顺序映射新创建的子块 ID 到对应的 flat 索引
+                        let mut mapped = 0;
+                        for ci in child_indices.iter() {
+                            if !id_map.contains_key(ci) && mapped < new_count {
+                                id_map.insert(*ci, created_ids[before + mapped].clone());
+                                mapped += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        eprintln!("[import_mdx] import complete!");
         Ok(())
     }
 
@@ -293,6 +417,114 @@ impl BlockService {
     pub async fn export_as_mdx(&self, root_id: &str) -> Result<String> {
         let tree = self.get_tree(root_id, true).await?;
         Self::blocks_to_mdx_local(&tree.children)
+    }
+}
+
+// ============================================================
+//  DocIR 扁平化工具（两阶段写入辅助）
+// ============================================================
+
+/// 扁平化的 `DocIR` 结构：用于两阶段 API 写入
+struct FlattenDocIr {
+    /// 所有块（扁平列表，每个块的 children 为空数组 []）
+    blocks: Vec<serde_json::Value>,
+    /// 每个块是否为容器类型（有原始 children 需要后续创建）
+    is_container: Vec<bool>,
+    /// 容器信息：哪些块是容器，它们的子块在 blocks 中的索引
+    containers: Vec<ContainerInfo>,
+}
+
+struct ContainerInfo {
+    self_idx: usize,
+    child_indices: Vec<usize>,
+}
+
+impl FlattenDocIr {
+    fn flatten(doc: &super::ir::Node) -> Self {
+        let mut blocks = Vec::new();
+        let mut is_container = Vec::new();
+        let mut containers = Vec::new();
+
+        for child in &doc.children {
+            flatten_node(child, &mut blocks, &mut is_container, &mut containers);
+        }
+
+        FlattenDocIr {
+            blocks,
+            is_container,
+            containers,
+        }
+    }
+}
+
+fn flatten_node(
+    node: &super::ir::Node,
+    blocks: &mut Vec<serde_json::Value>,
+    is_container: &mut Vec<bool>,
+    containers: &mut Vec<ContainerInfo>,
+) -> usize {
+    let idx = blocks.len();
+    let mut block_json = super::adapter::ir_block(node);
+    block_json["children"] = serde_json::json!([]);
+
+    let has_children = !node.children.is_empty();
+    let is_cont = matches!(
+        node.node_type,
+        super::ir::NodeType::Callout { .. }
+            | super::ir::NodeType::Toggle
+            | super::ir::NodeType::ColumnList
+            | super::ir::NodeType::Column { .. }
+            | super::ir::NodeType::Table
+            | super::ir::NodeType::Document
+            | super::ir::NodeType::BlockQuote
+    );
+
+    blocks.push(block_json);
+    is_container.push(is_cont && has_children);
+
+    if has_children {
+        let mut child_indices = Vec::new();
+        for child in &node.children {
+            let child_idx = flatten_node(child, blocks, is_container, containers);
+            child_indices.push(child_idx);
+        }
+        if is_cont {
+            containers.push(ContainerInfo {
+                self_idx: idx,
+                child_indices,
+            });
+        }
+    }
+
+    idx
+}
+
+/// 检查 MCP API 响应是否成功
+fn check_api_result(result: &serde_json::Value) -> Result<()> {
+    let code = result.get("code").and_then(serde_json::Value::as_i64).unwrap_or(0);
+    if code != 0 {
+        let message = result
+            .get("message")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown error");
+        anyhow::bail!("API error (code={}): {}", code, message);
+    }
+    Ok(())
+}
+
+/// 从 API 返回中提取所有 `block_id`
+fn collect_created_ids(descendant: &serde_json::Value, ids: &mut Vec<String>) {
+    if let Some(id) = descendant
+        .get("id")
+        .or(descendant.get("block_id"))
+        .and_then(|v| v.as_str())
+    {
+        ids.push(id.to_string());
+    }
+    if let Some(children) = descendant.get("children").and_then(|v| v.as_array()) {
+        for child in children {
+            collect_created_ids(child, ids);
+        }
     }
 }
 

@@ -11,14 +11,14 @@
 use super::ir::{InlineStyle, Node, NodeType};
 use crate::service::block::types::{Block, BlockType};
 
-/// Map `NodeType` to standard `block_type` string (consistent with `BlockType::as_str`)
+/// Map `NodeType` to MCP API `block_type` string (for `block_create_block_descendant`)
 fn node_type_to_block_type(nt: &NodeType) -> String {
     match nt {
         NodeType::Paragraph
         | NodeType::Text
         | NodeType::Link { .. }
-        | NodeType::MathBlock { .. } => "paragraph".into(),
-        NodeType::Heading { level } => format!("h{}", level),
+        | NodeType::MathBlock { .. } => "p".into(),
+        NodeType::Heading { level, .. } => format!("h{}", level),
         NodeType::BlockQuote => "quote".into(),
         NodeType::Callout { .. } => "callout".into(),
         NodeType::ColumnList => "column_list".into(),
@@ -26,7 +26,7 @@ fn node_type_to_block_type(nt: &NodeType) -> String {
         NodeType::Table => "table".into(),
         NodeType::TableRow => "table_row".into(),
         NodeType::TableCell { .. } => "table_cell".into(),
-        NodeType::BulletedList => "bullet_list".into(),
+        NodeType::BulletedList => "bulleted_list".into(),
         NodeType::NumberedList => "numbered_list".into(),
         NodeType::Task { .. } => "task".into(),
         NodeType::CodeBlock { .. } => "code".into(),
@@ -74,12 +74,12 @@ fn resolve_id(node: &Node) -> String {
 }
 
 /// Core conversion: single `DocIR` node → MCP Block JSON (with auto-generated id)
-fn ir_block(node: &Node) -> serde_json::Value {
+pub(crate) fn ir_block(node: &Node) -> serde_json::Value {
     let block_id = resolve_id(node);
 
     let mut result = match &node.node_type {
         NodeType::Paragraph => ir_paragraph(&node.children),
-        NodeType::Heading { level } => ir_heading(*level, &node.children),
+        NodeType::Heading { level, .. } => ir_heading(*level, &node.children),
         NodeType::BlockQuote => ir_quote(&node.children),
 
         // === Container types (content in children[]) ===
@@ -498,7 +498,7 @@ fn ir_diagram(node_type: &NodeType, code: &str) -> serde_json::Value {
     let bt = match node_type {
         NodeType::Mermaid { .. } => "mermaid",
         NodeType::PlantUml { .. } => "plantuml",
-        _ => return serde_json::json!({ "block_type": "unknown", "content": {}, "children": [] }),
+        _ => "unknown",
     };
     serde_json::json!({
         "block_type": bt,
@@ -725,8 +725,12 @@ fn block_node_to_ir(block: &Block) -> Node {
 /// Extract inline Nodes from MCP `content.text.elements[]` or fallback to plain string
 fn extract_elements(text_field: Option<&serde_json::Value>) -> Vec<Node> {
     match text_field {
-        None | Some(serde_json::Value::Array(_)) => vec![],
+        None => vec![],
         Some(serde_json::Value::String(s)) => vec![Node::plain_text(s.clone())],
+        Some(serde_json::Value::Array(arr)) => {
+            // Direct array of elements (modern MCP format)
+            arr.iter().filter_map(extract_element).collect()
+        }
         Some(obj) if obj.is_object() => {
             // Try elements array first
             if let Some(arr) = obj
@@ -1023,7 +1027,13 @@ fn main() {}
         ];
         let doc = block_to_ir(&blocks);
         assert_eq!(doc.children.len(), 2);
-        assert_eq!(doc.children[0].node_type, NodeType::Heading { level: 2 });
+        assert_eq!(
+            doc.children[0].node_type,
+            NodeType::Heading {
+                level: 2,
+                is_toggle: false
+            }
+        );
         assert_eq!(doc.children[1].node_type, NodeType::Paragraph);
     }
 
