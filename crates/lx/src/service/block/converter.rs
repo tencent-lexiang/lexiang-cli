@@ -428,8 +428,6 @@ impl BlockService {
 struct FlattenDocIr {
     /// 所有块（扁平列表，每个块的 children 为空数组 []）
     blocks: Vec<serde_json::Value>,
-    /// 每个块是否为容器类型（有原始 children 需要后续创建）
-    is_container: Vec<bool>,
     /// 容器信息：哪些块是容器，它们的子块在 blocks 中的索引
     containers: Vec<ContainerInfo>,
 }
@@ -442,25 +440,19 @@ struct ContainerInfo {
 impl FlattenDocIr {
     fn flatten(doc: &super::ir::Node) -> Self {
         let mut blocks = Vec::new();
-        let mut is_container = Vec::new();
         let mut containers = Vec::new();
 
         for child in &doc.children {
-            flatten_node(child, &mut blocks, &mut is_container, &mut containers);
+            flatten_node(child, &mut blocks, &mut containers);
         }
 
-        FlattenDocIr {
-            blocks,
-            is_container,
-            containers,
-        }
+        FlattenDocIr { blocks, containers }
     }
 }
 
 fn flatten_node(
     node: &super::ir::Node,
     blocks: &mut Vec<serde_json::Value>,
-    is_container: &mut Vec<bool>,
     containers: &mut Vec<ContainerInfo>,
 ) -> usize {
     let idx = blocks.len();
@@ -480,12 +472,11 @@ fn flatten_node(
     );
 
     blocks.push(block_json);
-    is_container.push(is_cont && has_children);
 
     if has_children {
         let mut child_indices = Vec::new();
         for child in &node.children {
-            let child_idx = flatten_node(child, blocks, is_container, containers);
+            let child_idx = flatten_node(child, blocks, containers);
             child_indices.push(child_idx);
         }
         if is_cont {
@@ -501,7 +492,10 @@ fn flatten_node(
 
 /// 检查 MCP API 响应是否成功
 fn check_api_result(result: &serde_json::Value) -> Result<()> {
-    let code = result.get("code").and_then(serde_json::Value::as_i64).unwrap_or(0);
+    let code = result
+        .get("code")
+        .and_then(serde_json::Value::as_i64)
+        .unwrap_or(0);
     if code != 0 {
         let message = result
             .get("message")

@@ -725,7 +725,6 @@ fn block_node_to_ir(block: &Block) -> Node {
 /// Extract inline Nodes from MCP `content.text.elements[]` or fallback to plain string
 fn extract_elements(text_field: Option<&serde_json::Value>) -> Vec<Node> {
     match text_field {
-        None => vec![],
         Some(serde_json::Value::String(s)) => vec![Node::plain_text(s.clone())],
         Some(serde_json::Value::Array(arr)) => {
             // Direct array of elements (modern MCP format)

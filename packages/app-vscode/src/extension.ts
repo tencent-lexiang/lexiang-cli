@@ -88,8 +88,8 @@ async function activateInternal(context: vscode.ExtensionContext): Promise<void>
     showStatusPanel: views.showStatusPanel,
   });
 
-  // 4. 自动恢复已缓存知识库
-  void activateCachedSpaces(services.authBridge, services.spaceRegistry, services.treeProvider, services.rpcClient);
+  // 4. 自动恢复已缓存知识库。激活阶段不主动 OAuth，认证只在用户操作需要时触发。
+  void activateCachedSpaces(services.spaceRegistry, services.rpcClient);
 
   // 5. 监听编辑器激活事件：当 lxdoc:// 文档被激活时，在目录树中高亮对应节点
   const revealOnActivate = vscode.window.onDidChangeActiveTextEditor((editor) => {
@@ -103,12 +103,7 @@ async function activateInternal(context: vscode.ExtensionContext): Promise<void>
 
   log('扩展激活完成');
 
-  // 6. 如果未认证，主动触发登录；登录成功后重新 autoStart
-  if (services.rpcClient.isReady()) {
-    void triggerLoginIfNeeded(services.rpcClient, services.authBridge, services.spaceRegistry, services.treeProvider, log);
-  }
-
-  // 7. 收集所有 disposable
+  // 6. 收集所有 disposable
   context.subscriptions.push(
     ...views.disposables,
     ...commandDisposables,
@@ -127,9 +122,7 @@ async function activateInternal(context: vscode.ExtensionContext): Promise<void>
  * 后台静默执行，不阻塞扩展激活流程。
  */
 async function activateCachedSpaces(
-  authBridge: AuthBridge,
   spaceRegistry: SpaceRegistry,
-  treeProvider: SpaceTreeProvider,
   rpcClient?: LxRpcClient,
 ): Promise<void> {
   // 通过 RPC 获取已缓存知识库
@@ -170,42 +163,6 @@ async function activateCachedSpaces(
   }
 
   log('autoStart: lx serve 未就绪，跳过自动恢复');
-}
-
-// ── 激活后自动登录 ──────────────────────────────────────────────────────
-
-/**
- * 扩展激活后检测认证状态，如果未登录则通过两阶段 OAuth 登录。
- *
- * 使用 RPC 的 auth/startOAuth + vscode.env.openExternal + auth/completeOAuth，
- * 兼容 Remote SSH（浏览器在本地打开，回调服务器在远端）。
- *
- * 登录成功后重新触发 autoStart 以恢复已缓存知识库。
- */
-async function triggerLoginIfNeeded(
-  rpcClient: LxRpcClient,
-  authBridge: AuthBridge,
-  spaceRegistry: SpaceRegistry,
-  treeProvider: SpaceTreeProvider,
-  log: (msg: string) => void,
-): Promise<void> {
-  try {
-    // 使用 authBridge 的缓存机制，避免重复检查
-    const status = await authBridge.getAuthStatus();
-    if (status.authenticated) {
-      log('autoLogin: 已认证，无需登录');
-      return;
-    }
-    log('autoLogin: 未认证，启动两阶段 OAuth...');
-
-    // 复用 authBridge 的 OAuth 流程（带并发防护）
-    await authBridge.ensureAuthenticated();
-
-    log('autoLogin: 登录完成，重新 autoStart...');
-    void activateCachedSpaces(authBridge, spaceRegistry, treeProvider, rpcClient);
-  } catch (err) {
-    log(`autoLogin: 登录失败或取消: ${err instanceof Error ? err.message : String(err)}`);
-  }
 }
 
 // ── 扩展停用 ──────────────────────────────────────────────────────────────

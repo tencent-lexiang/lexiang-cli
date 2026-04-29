@@ -46,8 +46,11 @@ export interface KbStore {
 
   // ── 内容读写 ───────────────────────────────────────────────
 
-  /** 获取条目内容（markdown） */
+  /** 获取条目内容（markdown）。允许触发远端拉取。 */
   getContent(entryId: string): Promise<string | undefined>;
+
+  /** 读取本地已缓存内容，不触发远端拉取。 */
+  getCachedContent(entryId: string): Promise<string | undefined>;
 
   /** 写入条目内容（仅本地缓存，不回写远端） */
   setContent(entryId: string, content: string): Promise<void>;

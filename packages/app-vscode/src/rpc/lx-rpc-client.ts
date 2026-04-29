@@ -28,66 +28,48 @@ export class LxBinaryError extends Error {
 
 // ── lx 二进制自动下载 ──────────────────────────────────────────────────────
 
-const LX_GITHUB_OWNER = 'nicholasniu';
+const LX_GITHUB_OWNER = 'tencent-lexiang';
 const LX_GITHUB_REPO = 'lexiang-cli';
 const LX_DOWNLOAD_TIMEOUT_MS = 120_000;
 
-/** 返回当前平台对应的 GitHub Release asset 名称关键词 */
-function getPlatformAssetKeyword(): string {
-  const platform = os.platform(); // darwin | linux | win32
-  const arch = os.arch(); // x64 | arm64
-  if (platform === 'darwin') return `darwin-${arch}`;
-  if (platform === 'linux') return `linux-${arch}`;
-  if (platform === 'win32') return `windows-${arch}`;
-  return `${platform}-${arch}`;
+/** 返回当前平台对应的 GitHub Release asset 名称 */
+function getPlatformAssetName(): string {
+  const platform = os.platform();
+  const arch = os.arch();
+
+  if (platform === 'darwin') {
+    if (arch === 'arm64') return 'lx-macos-arm64';
+    if (arch === 'x64') return 'lx-macos-x86_64';
+  }
+  if (platform === 'linux') {
+    if (arch === 'arm64') return 'lx-linux-arm64';
+    if (arch === 'x64') return 'lx-linux-x86_64';
+  }
+  if (platform === 'win32') {
+    if (arch === 'x64') return 'lx-windows-x86_64.exe';
+  }
+
+  throw new Error(`暂不支持当前平台: ${platform}-${arch}`);
 }
 
-/** 从 GitHub Release 查找并下载 lx 二进制到 globalStorage，返回本地路径 */
+/** 从 GitHub Release 直接下载 lx 二进制到 globalStorage，返回本地路径 */
 async function downloadLxBinary(
   globalStorageUri: vscode.Uri,
   log: (msg: string) => void,
 ): Promise<string> {
-  const keyword = getPlatformAssetKeyword();
+  const assetName = getPlatformAssetName();
   const ext = os.platform() === 'win32' ? '.exe' : '';
   const binName = `lx${ext}`;
+  const assetUrl = `https://github.com/${LX_GITHUB_OWNER}/${LX_GITHUB_REPO}/releases/latest/download/${assetName}`;
 
-  log(`lx-download: 正在从 GitHub Release 查找 ${keyword} 二进制...`);
+  log(`lx-download: 正在下载 ${assetName}...`);
 
-  // 1. 获取最新 release
-  const releasesUrl = `https://api.github.com/repos/${LX_GITHUB_OWNER}/${LX_GITHUB_REPO}/releases?per_page=10`;
-  const resp = await fetch(releasesUrl, {
-    headers: { Accept: 'application/vnd.github.v3+json' },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!resp.ok) throw new Error(`GitHub API 请求失败: HTTP ${resp.status}`);
-  const releases = await resp.json() as Array<{
-    tag_name: string;
-    draft: boolean;
-    prerelease: boolean;
-    assets: Array<{ name: string; browser_download_url: string; size: number }>;
-  }>;
-
-  // 找第一个非 draft 非 prerelease 的 release，且包含当前平台 asset
-  const release = releases.find(r =>
-    !r.draft &&
-    !r.prerelease &&
-    r.assets.some(a => a.name.includes(keyword) && (a.name.endsWith('.tar.gz') || a.name.endsWith('.zip')))
-  );
-  if (!release) throw new Error(`未找到适用于 ${keyword} 的 lx 二进制`);
-
-  const asset = release.assets.find(a => a.name.includes(keyword) && (a.name.endsWith('.tar.gz') || a.name.endsWith('.zip')));
-  if (!asset) throw new Error(`未找到适用于 ${keyword} 的 lx 二进制`);
-
-  log(`lx-download: 找到 ${release.tag_name} - ${asset.name}`);
-
-  // 2. 下载到 globalStorage
   const storageDir = globalStorageUri.fsPath;
   fs.mkdirSync(storageDir, { recursive: true });
 
-  const versionDir = path.join(storageDir, 'lx', release.tag_name);
+  const versionDir = path.join(storageDir, 'lx', 'latest');
   const binPath = path.join(versionDir, binName);
 
-  // 已下载过则直接返回
   if (fs.existsSync(binPath)) {
     log(`lx-download: 复用已下载的二进制: ${binPath}`);
     return binPath;
@@ -95,77 +77,37 @@ async function downloadLxBinary(
 
   fs.mkdirSync(versionDir, { recursive: true });
 
-  // 3. 下载压缩包
-  const archivePath = path.join(versionDir, asset.name);
   await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: '正在下载 lx CLI...', cancellable: false },
     async (progress) => {
-      progress.report({ message: `${asset.name}` });
-      await downloadFile(asset.browser_download_url, archivePath);
+      progress.report({ message: assetName });
+      await downloadFile(assetUrl, binPath);
     },
   );
 
-  // 4. 解压
-  const { execFile } = await import('node:child_process');
-  if (asset.name.endsWith('.tar.gz')) {
-    await new Promise<void>((resolve, reject) => {
-      execFile('tar', ['xzf', archivePath, '-C', versionDir], { timeout: 30_000 }, err =>
-        err ? reject(new Error(`解压失败: ${err.message}`)) : resolve(),
-      );
-    });
-  } else {
-    // .zip
-    await new Promise<void>((resolve, reject) => {
-      execFile('unzip', ['-o', archivePath, '-d', versionDir], { timeout: 30_000 }, err =>
-        err ? reject(new Error(`解压失败: ${err.message}`)) : resolve(),
-      );
-    });
+  if (!fs.existsSync(binPath)) {
+    throw new Error(`下载后未找到 ${binName}`);
   }
 
-  // 解压后二进制可能在子目录中，搜索一下
-  let extractedBin = path.join(versionDir, binName);
-  if (!fs.existsSync(extractedBin)) {
-    const found = findFile(versionDir, binName);
-    if (found) {
-      // 移到 versionDir 根目录
-      fs.renameSync(found, extractedBin);
-    }
-  }
-
-  if (!fs.existsSync(extractedBin)) {
-    throw new Error(`解压后未找到 ${binName}`);
-  }
-
-  // 设置可执行权限
   if (os.platform() !== 'win32') {
-    fs.chmodSync(extractedBin, 0o755);
+    fs.chmodSync(binPath, 0o755);
   }
 
-  // 清理压缩包
-  try { fs.unlinkSync(archivePath); } catch { /* ignore */ }
-
-  log(`lx-download: 下载完成: ${extractedBin}`);
-  return extractedBin;
-}
-
-/** 递归查找文件 */
-function findFile(dir: string, name: string): string | null {
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isFile() && entry.name === name) return full;
-    if (entry.isDirectory()) {
-      const found = findFile(full, name);
-      if (found) return found;
-    }
-  }
-  return null;
+  log(`lx-download: 下载完成: ${binPath}`);
+  return binPath;
 }
 
 /** 下载文件到本地 */
 function downloadFile(url: string, dest: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const file = createWriteStream(dest);
-    const request = https.get(url, { timeout: LX_DOWNLOAD_TIMEOUT_MS }, (response) => {
+    const request = https.get(url, {
+      timeout: LX_DOWNLOAD_TIMEOUT_MS,
+      headers: {
+        'User-Agent': 'lefs-vscode',
+        Accept: 'application/octet-stream',
+      },
+    }, (response) => {
       // 处理重定向
       if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
         file.close();
@@ -478,18 +420,16 @@ export class LxRpcClient implements vscode.Disposable {
     const configPath = vscode.workspace.getConfiguration('lefs').get<string>('lxPath');
     if (configPath) return configPath;
 
-    // 2. 扩展自带的平台特定 lx 二进制 (bin/darwin-arm64/lx, bin/linux-x64/lx, etc.)
+    // 2. 多平台 VSIX 自带的平台特定 lx 二进制
+    const extensionPath = vscode.extensions.getExtension('lexiang.lefs-vscode')!.extensionPath;
     const platformName = this.getPlatformBinaryName();
-    const extBinPath = path.join(
-      vscode.extensions.getExtension('lexiang.lefs-vscode')!.extensionPath,
-      'bin',
-      platformName,
-    );
+    const bundledBinPath = path.join(extensionPath, 'bin', platformName);
     try {
-      fs.accessSync(extBinPath, fs.constants.X_OK);
-      return extBinPath;
+      fs.accessSync(bundledBinPath, fs.constants.X_OK);
+      this.log(`lx-rpc: 使用扩展自带 lx: ${bundledBinPath}`);
+      return bundledBinPath;
     } catch {
-      // 自带二进制不存在，继续 fallback
+      // 自带平台二进制不存在，继续 fallback
     }
 
     // 3. globalStorage 中已下载的 lx（按版本缓存）
@@ -524,7 +464,17 @@ export class LxRpcClient implements vscode.Disposable {
       // PATH 中没有 lx
     }
 
-    // 5. 从 GitHub Release 自动下载
+    // 5. 本地测试 VSIX 兼容路径（Makefile install-vscode 会写入 bin/lx）
+    const localTestBinPath = path.join(extensionPath, 'bin', os.platform() === 'win32' ? 'lx.exe' : 'lx');
+    try {
+      fs.accessSync(localTestBinPath, fs.constants.X_OK);
+      this.log(`lx-rpc: 使用本地测试 lx: ${localTestBinPath}`);
+      return localTestBinPath;
+    } catch {
+      // 本地测试二进制不存在，继续自动下载
+    }
+
+    // 6. 从 GitHub Release 自动下载
     try {
       this.log('lx-rpc: 本地未找到 lx，尝试从 GitHub Release 下载...');
       const binPath = await downloadLxBinary(this.globalStorageUri, this.log);

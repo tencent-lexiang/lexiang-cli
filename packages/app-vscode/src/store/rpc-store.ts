@@ -113,7 +113,7 @@ export class RpcStore implements KbStore {
     try {
       const result = await this.rpcClient.sendRequest('entry/listChildren', {
         space_id: this.spaceId,
-        parent_entry_id: parentEntryId,
+        parent_id: parentEntryId,
       });
       const rawEntries = (result as Record<string, unknown>).children as Array<Record<string, unknown>> ?? [];
       const entries = rawEntries.map(parseMcpEntry);
@@ -151,6 +151,10 @@ export class RpcStore implements KbStore {
     } catch {
       return undefined;
     }
+  }
+
+  async getCachedContent(entryId: string): Promise<string | undefined> {
+    return this.contentCache.get(entryId);
   }
 
   async setContent(entryId: string, content: string): Promise<void> {

@@ -799,7 +799,12 @@ async fn handle_import(service: &BlockService, matches: &clap::ArgMatches) -> Re
         "mdx" => {
             // 本地引擎：MDX → DocIR → ir_to_descendant() → 两阶段安全写入
             service
-                .import_mdx(block_id, entry_id.map(std::string::String::as_str), &content, chunk_size)
+                .import_mdx(
+                    block_id,
+                    entry_id.map(std::string::String::as_str),
+                    &content,
+                    chunk_size,
+                )
                 .await?;
             println!(
                 "\u{2713} Imported from {} using local MDX engine (chunk_size={})",

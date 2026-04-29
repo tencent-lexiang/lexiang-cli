@@ -3,7 +3,7 @@
   "displayName": "乐享知识库",
   "description": "乐享知识库",
   "icon": "assets/lexiang.png",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "engines": {
     "vscode": "^1.85.0",

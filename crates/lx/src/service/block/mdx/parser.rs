@@ -616,14 +616,13 @@ fn try_extract_attr_from_children(node: &mut Node) -> bool {
     // If direct extraction didn't work, check inside Paragraph children
     // and propagate the extracted attribute UP to this node
     for child in &mut node.children {
-        if matches!(child.node_type, NodeType::Paragraph)
-            && try_extract_attr_direct(child) {
-                // Propagate from inner Paragraph to outer container (list/quote)
-                if let Some(ref c) = child.attrs.block_color {
-                    node.attrs.block_color = Some(c.clone());
-                }
-                return true;
+        if matches!(child.node_type, NodeType::Paragraph) && try_extract_attr_direct(child) {
+            // Propagate from inner Paragraph to outer container (list/quote)
+            if let Some(ref c) = child.attrs.block_color {
+                node.attrs.block_color = Some(c.clone());
             }
+            return true;
+        }
     }
 
     false
@@ -674,9 +673,9 @@ fn try_extract_attr_direct(node: &mut Node) -> bool {
     // Strategy 2: Check if last child is an MDX expression like {color="yellow"} or {toggle=true}
     let last_expr_idx = node.children.iter().rposition(|c| {
         matches!(c.node_type, NodeType::Text)
-            && c.text.as_ref().is_some_and(|t| {
-                t.starts_with('{') && t.ends_with('}') && !t.contains("\\{")
-            })
+            && c.text
+                .as_ref()
+                .is_some_and(|t| t.starts_with('{') && t.ends_with('}') && !t.contains("\\{"))
     });
 
     if let Some(idx) = last_expr_idx {
@@ -736,8 +735,8 @@ fn parse_key_value_attr(s: &str) -> Option<BlockAttr> {
     let key = s[..eq_pos].trim();
     let value_raw = s[eq_pos + 1..].trim();
 
-    if !(value_raw.starts_with('"') && value_raw.ends_with('"'))
-        && !(value_raw.starts_with('\'') && value_raw.ends_with('\''))
+    if !(value_raw.starts_with('"') && value_raw.ends_with('"')
+        || value_raw.starts_with('\'') && value_raw.ends_with('\''))
     {
         return None;
     }

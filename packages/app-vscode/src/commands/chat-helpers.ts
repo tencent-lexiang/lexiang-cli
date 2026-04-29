@@ -24,6 +24,7 @@ export async function tryExecuteFirstAvailableCommand(
     if (!command || !allCommands.includes(command)) continue;
     try {
       await vscode.commands.executeCommand(command, ...args);
+      log(`执行命令成功: ${command}`);
       return command;
     } catch (err) {
       log(`执行命令失败: ${command}, err=${err instanceof Error ? err.message : String(err)}`);
@@ -87,8 +88,7 @@ export async function attachToChat(log: (msg: string) => void, uri: vscode.Uri, 
   if (target === 'codebuddy') {
     const executed = await tryExecuteFirstAvailableCommand(log, [
       'tencentcloud.codingcopilot.addToChat',
-      'tencentcloud.codingcopilot.quickFix.addToChat',
-    ], uri);
+    ], uri, [uri]);
     return Boolean(executed);
   }
   if (target === 'copilot') {
@@ -128,7 +128,6 @@ export async function attachToChat(log: (msg: string) => void, uri: vscode.Uri, 
   const candidates = [
     configured,
     'tencentcloud.codingcopilot.addToChat',
-    'tencentcloud.codingcopilot.quickFix.addToChat',
     'gongfeng.gongfeng-copilot.chat.startFromExplorer',
     ...workbenchCommands,
     'github.copilot.chat.attachFile',
@@ -142,9 +141,12 @@ export async function attachToChat(log: (msg: string) => void, uri: vscode.Uri, 
     try {
       if (cmd === 'gongfeng.gongfeng-copilot.chat.startFromExplorer') {
         await vscode.commands.executeCommand(cmd, uri, [uri], 'lefs_add_to_chat');
+      } else if (cmd === 'tencentcloud.codingcopilot.addToChat') {
+        await vscode.commands.executeCommand(cmd, uri, [uri]);
       } else {
         await vscode.commands.executeCommand(cmd, uri);
       }
+      log(`attachToChat[auto]: 命令 ${cmd} 成功`);
       return true;
     } catch (err) {
       log(`attachToChat[auto]: 命令 ${cmd} 失败: ${err instanceof Error ? err.message : String(err)}`);
@@ -201,27 +203,19 @@ export function parseLxdocTarget(uri: vscode.Uri): { spaceId: string; entryId: s
 // ── 文件准备逻辑 ─────────────────────────────────────────────────────────
 
 /**
- * 准备聊天用的文件/文件夹。
+ * 准备聊天用的真实临时文件/文件夹。
  *
  * 工作流程：
  * 1. 若 isFolder=true（文件夹模式）：
- *    - 查询 DB 获取子节点列表
- *    - 过滤隐藏文件（.开头）和文件夹类型
- *    - 遍历子节点读取内容，跳过未同步的
- *    - 若全部跳过，返回 null
+ *    - 查询子节点列表
+ *    - 过滤隐藏文件（.开头）
+ *    - 遍历子节点，有内容用内容，无内容写占位文本
  *    - 调用 tmpManager.writeFolder 生成临时目录并返回 folder URI
  * 2. 若 isFolder=false（单文档模式）：
- *    - 从 DB 读取文档内容
- *    - 若无内容，生成占位文本
+ *    - 尝试读取文档内容，无内容时写占位文本
  *    - 调用 tmpManager.writeSingleFile 生成临时文件并返回 file URI
  *
- * @param spaceId - 知识库 ID
- * @param entryId - 条目 ID
- * @param name - 显示名称
- * @param isFolder - 是否文件夹模式
- * @param tmpManager - 临时目录管理器
- * @param log - 日志函数
- * @returns PreparedResult 或 null（无可用内容时）
+ * 不会因内容缺失而阻断，始终返回结果。
  */
 export async function prepareChatFiles(
   spaceId: string,
@@ -236,34 +230,47 @@ export async function prepareChatFiles(
   if (!store) return null;
 
   if (isFolder) {
-    const children = await store.getChildren(entryId);
     const files: Array<{ name: string; content: string }> = [];
-    let skippedCount = 0;
-    for (const child of children) {
-      if (child.name.startsWith('.')) continue;
-      if (child.entryType === 'folder') continue;
-      const raw = await store.getContent(child.id);
-      if (!raw) {
-        skippedCount++;
-        log(`prepareChatFiles: 跳过子节点「${child.name}」，内容未同步`);
-        continue;
+    const visited = new Set<string>();
+
+    const collectChildren = async (parentEntryId: string, prefix: string): Promise<void> => {
+      if (visited.has(parentEntryId)) return;
+      visited.add(parentEntryId);
+
+      const children = await store.getChildren(parentEntryId);
+
+      for (const child of children) {
+        if (child.name.startsWith('.')) continue;
+        const childName = prefix ? `${prefix}/${child.name}` : child.name;
+
+        if (child.entryType !== 'folder') {
+          const raw = await store.getCachedContent(child.id);
+          if (raw) {
+            const lxdoc = parseLxdoc(raw);
+            files.push({ name: childName, content: lxdoc ? lxdoc.body : raw });
+          } else {
+            files.push({ name: childName, content: `<!-- 文档「${childName}」内容尚未同步 -->\n` });
+          }
+        }
+
+        if (child.entryType === 'folder' || child.hasChildren) {
+          await collectChildren(child.id, childName);
+        }
       }
-      const lxdoc = parseLxdoc(raw);
-      const body = lxdoc ? lxdoc.body : raw;
-      files.push({ name: child.name, content: body });
+    };
+
+    await collectChildren(entryId, '');
+
+    if (files.length === 0) {
+      files.push({ name: '_lexiang', content: `<!-- 文件夹「${name}」暂无可添加的文档 -->\n` });
     }
 
-    if (files.length === 0) return null;
-
-    if (skippedCount > 0) {
-      log(`prepareChatFiles: 文件夹「${name}」共 ${children.length} 个子节点，成功 ${files.length} 个，跳过 ${skippedCount} 个`);
-    }
-
+    log(`prepareChatFiles: 文件夹「${name}」共 ${files.length} 个文档`);
     const folderUri = tmpManager.writeFolder(name, files);
     return { kind: 'folder' as const, uri: folderUri, fileCount: files.length, name };
   } else {
-    const raw = await store.getContent(entryId);
-    const body = raw ?? `<!-- 文档「${name}」尚未同步 -->`;
+    const raw = await store.getCachedContent(entryId);
+    const body = raw ? (parseLxdoc(raw)?.body ?? raw) : `<!-- 文档「${name}」内容尚未同步 -->\n`;
     const fileUri = tmpManager.writeSingleFile(name, body);
     return { kind: 'file' as const, uri: fileUri, name };
   }

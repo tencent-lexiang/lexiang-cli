@@ -7,9 +7,7 @@
 import * as vscode from 'vscode';
 
 import { parseUri } from '../views/lxdoc-provider.js';
-import { buildLxdocUri } from '../views/lxdoc-provider.js';
 import {
-  addCurrentFileToChat,
   attachToChat,
   focusChatPanel,
   parseLxdocTarget,
@@ -26,17 +24,8 @@ import { withCommand } from './types.js';
  * 工作流程：
  * 1. 从 TreeItem 或 activeTextEditor 提取 spaceId、entryId、name
  * 2. 根据 contextValue 判断是文件夹还是单文档（isFolder）
- * 3. 调用 prepareChatFiles 准备临时文件/文件夹
- *    - 文件夹：读取子节点内容，生成目录 URI
- *    - 单文档：读取文档内容，生成文件 URI
- * 4. 若内容未同步，提示用户并退出
- * 5. 聚焦聊天面板（focusChatPanel）
- * 6. 执行附加命令（attachToChat）
- * 7. 若失败，回退到打开 lxdoc 文档 + 手动附加的兜底链路
- *
- * @param target - 聊天目标（auto/codebuddy/copilot/gongfeng）
- * @param deps - 命令依赖注入对象
- * @param item - TreeView 节点
+ * 3. 调用 prepareChatFiles 准备真实临时文件/文件夹（无内容时写占位，不拉取内容）
+ * 4. 聚焦聊天面板 + 执行附加命令
  */
 async function addToChatCore(
   target: ChatTarget,
@@ -48,7 +37,7 @@ async function addToChatCore(
   let spaceId: string | undefined = item?.spaceId;
   let entryId: string | undefined = item?.entryId;
   let name: string | undefined;
-  const isFolder = item?.contextValue === 'entry-folder' || Boolean(item?.contextValue?.startsWith('space'));
+  const isFolder = Boolean(item?.contextValue?.startsWith('entry-folder')) || Boolean(item?.contextValue?.startsWith('space'));
 
   if (item) {
     const label = item.label;
@@ -75,6 +64,19 @@ async function addToChatCore(
     }
   }
 
+  // 如果只有 spaceId 没有 entryId（例如选中整个知识库节点），获取 root_entry_id
+  if (spaceId && !entryId && deps.storeFactory) {
+    try {
+      const store = await deps.storeFactory.getStore(spaceId);
+      const rootEntryId = await store.getConfig('root_entry_id');
+      if (rootEntryId) {
+        entryId = rootEntryId;
+      }
+    } catch (err) {
+      log(`addToChat[${target}]: 获取 root_entry_id 失败: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   if (!spaceId || !entryId) {
     log('addToChat: 未获取到有效的 lxdoc 文档');
     void vscode.window.showWarningMessage('当前不是乐享文档，无法添加到聊天');
@@ -85,47 +87,40 @@ async function addToChatCore(
   log(`addToChat[${target}]: spaceId=${spaceId}, entryId=${entryId}, name=${finalName}, isFolder=${isFolder}`);
 
   try {
-    const prepared = await prepareChatFiles(spaceId, entryId, finalName, isFolder, tmpChatManager, log, deps.storeFactory);
+    let prepared = await prepareChatFiles(spaceId, entryId, finalName, isFolder, tmpChatManager, log, deps.storeFactory);
 
     if (!prepared) {
+      const content = `<!-- 乐享文档「${finalName}」内容尚未同步，本次仅添加引用到聊天 -->\n`;
       if (isFolder) {
-        void vscode.window.showInformationMessage(`文件夹「${finalName}」下的文档内容尚未同步完成，请稍等片刻或手动触发同步后重试`);
+        const uri = tmpChatManager.writeFolder(finalName, [{ name: '_lexiang', content }]);
+        prepared = { kind: 'folder' as const, uri, fileCount: 1, name: finalName };
       } else {
-        void vscode.window.showInformationMessage(`文档「${finalName}」内容尚未同步完成，请稍等片刻或手动触发同步后重试`);
+        const uri = tmpChatManager.writeSingleFile(finalName, content);
+        prepared = { kind: 'file' as const, uri, name: finalName };
       }
-      return;
     }
 
     if (prepared.kind === 'folder') {
       log(`addToChat[${target}]: 传递文件夹 URI: ${prepared.uri.toString()}, 包含 ${prepared.fileCount} 个文件`);
-      const focused = await focusChatPanel(log, target);
-      const attached = await attachToChat(log, prepared.uri, target, true);
-      if (!attached) {
-        void vscode.window.showInformationMessage('未检测到可用的聊天插件添加命令，请手动打开聊天面板后重试。');
-        return;
-      }
-      if (!focused) {
-        log(`addToChat[${target}]: 聊天面板未自动聚焦，但附件添加成功`);
-      }
-      void vscode.window.setStatusBarMessage(`已将「${finalName}」(${prepared.fileCount} 个文档) 添加到聊天`, 5000);
     } else {
-      const focused = await focusChatPanel(log, target);
-      const attached = await attachToChat(log, prepared.uri, target, false);
-      if (!attached) {
-        void vscode.window.showInformationMessage('未检测到可用的聊天插件添加命令，请手动打开聊天面板后重试。');
-        return;
-      }
-      if (!focused) {
-        log(`addToChat[${target}]: 聊天面板未自动聚焦，但附件添加成功`);
-      }
-      void vscode.window.setStatusBarMessage(`已将「${finalName}」添加到聊天`, 5000);
+      log(`addToChat[${target}]: 传递文件 URI: ${prepared.uri.toString()}`);
     }
+
+    let attached = await attachToChat(log, prepared.uri, target, prepared.kind === 'folder');
+    if (!attached) {
+      await focusChatPanel(log, target);
+      attached = await attachToChat(log, prepared.uri, target, prepared.kind === 'folder');
+    }
+    if (!attached) {
+      void vscode.window.showInformationMessage('未检测到可用的聊天插件添加命令，请手动打开聊天面板后重试。');
+      return;
+    }
+
+    const suffix = prepared.kind === 'folder' ? `(${prepared.fileCount} 个文档)` : '';
+    void vscode.window.setStatusBarMessage(`已将「${finalName}」${suffix}添加到聊天`, 5000);
   } catch (err) {
     log(`addToChat[${target}]: 失败: ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
-    const uri = buildLxdocUri(spaceId, entryId, finalName);
-    await vscode.window.showTextDocument(uri, { preview: true, preserveFocus: false });
-    await focusChatPanel(log, target);
-    await addCurrentFileToChat(log, target);
+    void vscode.window.showWarningMessage(`添加「${finalName}」到聊天失败，请查看乐享输出日志。`);
   }
 }
 

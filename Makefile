@@ -54,10 +54,10 @@ pack-vscode: ## 打包 .vsix（含自带 lx 二进制）
 	cd packages/app-vscode && npx -p @vscode/vsce vsce package --no-dependencies
 
 install-vscode: ## 本地安装扩展（卸载旧版 → 打包 → 安装 → 清理）
-	@echo "==> [Rust] 构建 release..."
-	cargo build --release
-	@mkdir -p packages/app-vscode/bin
-	@cp target/release/lexiang-cli packages/app-vscode/bin/lx
+	# @echo "==> [Rust] 构建 release..."
+	# cargo build --release
+	# @mkdir -p packages/app-vscode/bin
+	# @cp target/release/lexiang-cli packages/app-vscode/bin/lx
 	@echo "==> [VSCode] 构建..."
 	cd packages/app-vscode && node esbuild.mjs --minify
 	@echo "==> [VSCode] 打包 VSIX..."
