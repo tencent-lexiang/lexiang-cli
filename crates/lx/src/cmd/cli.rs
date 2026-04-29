@@ -53,6 +53,10 @@ pub enum Commands {
         /// Example: lx login --token "`your_access_token`"
         #[arg(long)]
         token: Option<String>,
+
+        /// Login via Lexiang client redirect flow and obtain cookie-backed MCP token
+        #[arg(long)]
+        client: bool,
     },
     /// Logout and remove credentials
     Logout,
@@ -71,6 +75,12 @@ pub enum Commands {
     Status,
     /// Print version
     Version,
+    /// [hidden] Handle lexiang:// URL callback from system URL scheme
+    #[command(hide = true)]
+    HandleUrl {
+        /// The full URL (e.g. <lexiang://auth-callback?code=...&state>=...)
+        url: String,
+    },
     /// Check for updates from GitHub releases
     Update {
         #[command(subcommand)]

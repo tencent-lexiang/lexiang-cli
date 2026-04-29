@@ -20,6 +20,18 @@ lx version
 
 ## 登录
 
+### 客户端登录（推荐）
+
+通过乐享客户端重定向获取 Cookie，可调用依赖 Cookie 的内部接口：
+
+```bash
+lx login --client
+```
+
+CLI 会显示登录链接，在浏览器中完成登录后，将回调链接 `lexiang://auth-callback?code=...&state=...` 粘贴到终端。
+
+### OAuth 登录
+
 ```bash
 lx login
 ```

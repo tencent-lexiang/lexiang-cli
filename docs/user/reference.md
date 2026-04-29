@@ -29,6 +29,19 @@
 
 有 `refresh_token` 时 CLI 自动刷新。
 
+### Client Session
+
+路径：`~/.lexiang/auth/session.json`
+
+```json
+{
+  "cookie": "uid=xxx; session=yyy",
+  "created_at": 1234567890
+}
+```
+
+保存客户端登录获得的 Cookie，用于调用需要 Cookie 的乐享内部接口。文件权限为 `0600`。
+
 ### Schema
 
 路径：`~/.lexiang/tools/override.json`
@@ -92,6 +105,8 @@ RUST_LOG=trace lx search kb --keyword "test"
 | 问题 | 解决方案 |
 |------|---------|
 | Token 过期 | `lx login` |
+| Cookie 登录失效 | 重新运行 `lx login --client` |
+| 回调链接粘贴失败 | 确认链接包含 `code=` 参数 |
 | 命令缺失 | `lx tools sync` |
 | 检查 Token 有效期 | `cat ~/.lexiang/auth/token.json \| jq '.expires_at \| todate'` |
 | 检查 Schema 加载 | `cat ~/.lexiang/tools/override.json \| jq '.tools.keys \| length'` |

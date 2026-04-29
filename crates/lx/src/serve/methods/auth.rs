@@ -1,4 +1,5 @@
-//! Auth methods: auth/status, auth/login, auth/startOAuth, auth/completeOAuth, auth/logout
+//! Auth methods: auth/status, auth/login, auth/startOAuth, auth/completeOAuth,
+//!              auth/startClientLogin, auth/completeClientLogin, auth/logout
 
 use crate::rpc_method;
 use crate::serve::{error_codes, JsonRpcError, JsonRpcResult, ServeContext};
@@ -11,8 +12,16 @@ async fn handle_auth_status(_ctx: &ServeContext, _params: Value) -> JsonRpcResul
         _ => false,
     };
 
+    // 判断认证类型
+    let auth_type = if crate::auth::load_client_session().ok().flatten().is_some() {
+        "client"
+    } else {
+        "oauth"
+    };
+
     Ok(serde_json::json!({
         "authenticated": has_valid_token,
+        "authType": auth_type,
     }))
 }
 
@@ -119,7 +128,45 @@ async fn handle_auth_complete_oauth(ctx: &ServeContext, _params: Value) -> JsonR
     }))
 }
 
-/// 登出：删除本地 token
+/// 客户端登录：返回登录 URL
+///
+/// 可选参数 `redirectUrl`：登录完成后浏览器跳转的目标 URL。
+/// VS Code 扩展可传入 `vscode://lexiang.lefs-vscode/auth-callback`
+/// 以便浏览器回调自动被 VS Code URI handler 捕获。
+async fn handle_auth_start_client_login(_ctx: &ServeContext, params: Value) -> JsonRpcResult {
+    let redirect_url = params.get("redirectUrl").and_then(|v| v.as_str());
+    Ok(serde_json::json!({
+        "authUrl": crate::auth::client_login_url(redirect_url),
+    }))
+}
+
+/// 客户端登录：用回调 URL 完成登录
+async fn handle_auth_complete_client_login(ctx: &ServeContext, params: Value) -> JsonRpcResult {
+    let callback = params
+        .get("callbackUrl")
+        .or_else(|| params.get("code"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| JsonRpcError::invalid_params("Missing callbackUrl or code"))?;
+
+    let token = crate::auth::login_with_client_callback(callback)
+        .await
+        .map_err(|e| {
+            JsonRpcError::new(
+                error_codes::AUTH_REQUIRED,
+                format!("Client login failed: {e}"),
+            )
+        })?;
+
+    {
+        let mut state = ctx.state.write().await;
+        state.access_token = Some(token.access_token.clone());
+        state.cached_mcp_client = None;
+    }
+
+    Ok(serde_json::json!({ "success": true }))
+}
+
+/// 登出：删除本地 token 和 session
 async fn handle_auth_logout(ctx: &ServeContext, _params: Value) -> JsonRpcResult {
     crate::auth::logout()
         .map_err(|e| JsonRpcError::new(error_codes::INTERNAL_ERROR, e.to_string()))?;
@@ -141,4 +188,6 @@ inventory::submit! { rpc_method!("auth/status", handle_auth_status) }
 inventory::submit! { rpc_method!("auth/login", handle_auth_login) }
 inventory::submit! { rpc_method!("auth/startOAuth", handle_auth_start_oauth) }
 inventory::submit! { rpc_method!("auth/completeOAuth", handle_auth_complete_oauth) }
+inventory::submit! { rpc_method!("auth/startClientLogin", handle_auth_start_client_login) }
+inventory::submit! { rpc_method!("auth/completeClientLogin", handle_auth_complete_client_login) }
 inventory::submit! { rpc_method!("auth/logout", handle_auth_logout) }

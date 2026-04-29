@@ -32,6 +32,13 @@ const CALLBACK_START_PORT: u16 = 18765;
 const CALLBACK_MAX_PORT_ATTEMPTS: u16 = 50;
 const TOKEN_FILE: &str = "token.json";
 
+// ── 客户端登录常量 ──────────────────────────────────────────────────────
+const CLIENT_AUTH_LOGIN_URL: &str = "https://lexiangla.com/tapi/account/v1/auth_login";
+const CLIENT_MCP_TOKENS_URL: &str = "https://lexiangla.com/sapi/account/mcp/v1/tokens";
+const SESSION_FILE: &str = "session.json";
+const PENDING_LOGIN_FILE: &str = "pending-login.json";
+const CALLBACK_URL_FILE: &str = "client-callback-url.txt";
+
 // ═══════════════════════════════════════════════════════════
 //  公开数据结构
 // ═══════════════════════════════════════════════════════════
@@ -43,6 +50,13 @@ pub struct TokenData {
     pub expires_at: Option<i64>,
     /// 动态注册获得的 `client_id`，refresh 时需要
     pub client_id: Option<String>,
+}
+
+/// 客户端登录获得的 Cookie session 数据
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClientSessionData {
+    pub cookie: String,
+    pub created_at: i64,
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -219,9 +233,11 @@ pub async fn login() -> Result<TokenData> {
     Ok(token)
 }
 
-/// 登出 —— 删除本地 token
+/// 登出 —— 删除本地 token 和客户端 session
 pub fn logout() -> Result<()> {
-    delete_token()
+    delete_token()?;
+    delete_client_session()?;
+    Ok(())
 }
 
 /// 两阶段 OAuth 登录 — 第一阶段：启动回调服务器，返回授权 URL
@@ -393,6 +409,413 @@ fn delete_token() -> Result<()> {
 }
 
 // ═══════════════════════════════════════════════════════════
+//  Client Session 持久化（~/.lexiang/auth/session.json）
+// ═══════════════════════════════════════════════════════════
+
+fn session_path() -> Result<PathBuf> {
+    Ok(datadir::auth_dir().join(SESSION_FILE))
+}
+
+pub fn save_client_session(session: &ClientSessionData) -> Result<()> {
+    let path = session_path()?;
+    let json = serde_json::to_string_pretty(session)?;
+    fs::write(&path, json)?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&path)?.permissions();
+        perms.set_mode(0o600);
+        fs::set_permissions(&path, perms)?;
+    }
+
+    Ok(())
+}
+
+pub fn load_client_session() -> Result<Option<ClientSessionData>> {
+    let path = session_path()?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    let json = fs::read_to_string(&path)?;
+    let session: ClientSessionData = serde_json::from_str(&json)?;
+    Ok(Some(session))
+}
+
+fn delete_client_session() -> Result<()> {
+    let path = session_path()?;
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════
+//  客户端登录 — 文件 IPC（跨进程传递回调 URL）
+// ═══════════════════════════════════════════════════════════
+
+/// 写入 pending-login 标记，表示有登录流程等待回调
+pub fn write_pending_login() -> Result<()> {
+    let path = datadir::auth_dir().join(PENDING_LOGIN_FILE);
+    let json = serde_json::json!({ "started_at": chrono::Utc::now().timestamp() });
+    fs::write(&path, json.to_string())?;
+    Ok(())
+}
+
+/// 清除 pending-login 标记
+pub fn clear_pending_login() -> Result<()> {
+    let path = datadir::auth_dir().join(PENDING_LOGIN_FILE);
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    Ok(())
+}
+
+/// 检查是否有 pending login（`handle-url` 调用）
+pub fn has_pending_login() -> bool {
+    let path = datadir::auth_dir().join(PENDING_LOGIN_FILE);
+    if !path.exists() {
+        return false;
+    }
+    // 检查是否过期（> 5 分钟视为过期）
+    let json = fs::read_to_string(&path).unwrap_or_default();
+    let started_at: i64 = serde_json::from_str::<serde_json::Value>(&json)
+        .ok()
+        .and_then(|v| v.get("started_at").and_then(serde_json::Value::as_i64))
+        .unwrap_or(0);
+    let elapsed = chrono::Utc::now().timestamp() - started_at;
+    (0..300).contains(&elapsed)
+}
+
+/// 将回调 URL 写入文件（`handle-url` 调用）
+pub fn write_callback_url(url: &str) -> Result<()> {
+    let path = datadir::auth_dir().join(CALLBACK_URL_FILE);
+    fs::write(&path, url)?;
+    Ok(())
+}
+
+/// 清除回调 URL 文件（`login --client` 开始时清理残留）
+pub fn clear_callback_url() -> Result<()> {
+    let path = datadir::auth_dir().join(CALLBACK_URL_FILE);
+    if path.exists() {
+        fs::remove_file(&path)?;
+    }
+    Ok(())
+}
+
+/// 等待回调 URL 文件出现（轮询，最多 120 秒）
+pub async fn wait_for_callback_url() -> Result<String> {
+    let path = datadir::auth_dir().join(CALLBACK_URL_FILE);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+
+    while std::time::Instant::now() < deadline {
+        if let Ok(content) = fs::read_to_string(&path) {
+            if !content.trim().is_empty() {
+                // 读取后删除
+                let _ = fs::remove_file(&path);
+                return Ok(content.trim().to_string());
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+
+    Err(anyhow::anyhow!("等待浏览器回调超时（120秒），请重试"))
+}
+
+// ═══════════════════════════════════════════════════════════
+//  客户端登录 — URL Scheme 注册（跨平台）
+// ═══════════════════════════════════════════════════════════
+
+/// 检查 lexiang:// URL scheme 是否已注册
+pub fn is_url_scheme_registered() -> bool {
+    is_url_scheme_registered_impl()
+}
+
+/// 注册 lexiang:// URL scheme 到系统
+pub fn register_url_scheme() -> Result<()> {
+    register_url_scheme_impl()
+}
+
+// ── macOS: .app bundle + lsregister + LSSetDefaultHandlerForURLScheme ──────
+
+#[cfg(target_os = "macos")]
+const APP_BUNDLE_ID: &str = "com.lexiang.cli-url-handler";
+
+#[cfg(target_os = "macos")]
+fn url_handler_app_path() -> PathBuf {
+    datadir::datadir()
+        .join("helpers")
+        .join("LexiangURLOpener.app")
+}
+
+#[cfg(target_os = "macos")]
+fn is_url_scheme_registered_impl() -> bool {
+    let app_path = url_handler_app_path();
+    let exe_path = app_path.join("Contents/MacOS/LexiangURLOpener");
+    if !app_path.join("Contents/Info.plist").exists() || !exe_path.exists() {
+        return false;
+    }
+    // 检查可执行文件是否为旧版 bash 脚本（需重建为 Swift 二进制）
+    if let Ok(content) = fs::read_to_string(&exe_path) {
+        if content.starts_with("#!/bin/bash") {
+            return false;
+        }
+    }
+    // 检查可执行文件中是否包含当前 lx 路径
+    let current_exe = std::env::current_exe().unwrap_or_default();
+    if !current_exe.as_os_str().is_empty() {
+        if let Ok(content) = fs::read_to_string(&exe_path) {
+            if !content.contains(&current_exe.display().to_string()) {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+#[cfg(target_os = "macos")]
+fn register_url_scheme_impl() -> Result<()> {
+    let app_path = url_handler_app_path();
+
+    // 清理旧的 .app bundle（可能包含过期的 bash 脚本或旧路径）
+    if app_path.exists() {
+        let _ = fs::remove_dir_all(&app_path);
+    }
+
+    let contents = app_path.join("Contents");
+    let macos = contents.join("MacOS");
+    fs::create_dir_all(&macos)?;
+
+    // 1. Info.plist
+    let plist = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>LexiangURLOpener</string>
+    <key>CFBundleIdentifier</key>
+    <string>{APP_BUNDLE_ID}</string>
+    <key>CFBundleName</key>
+    <string>Lexiang URL Opener</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>Lexiang CLI URL Handler</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>lexiang</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>"#
+    );
+    fs::write(contents.join("Info.plist"), plist)?;
+
+    // 2. 编译 Swift 可执行文件 — 正确处理 Apple Event 中的 URL
+    //
+    // macOS URL scheme 回调通过 Apple Event (kAEGetURL) 传递 URL，
+    // 必须用 NSAppleEventManager 注册 kAEGetURL 处理器才能接收。
+    // application(_:open:) 是处理文件打开的，不是 URL scheme！
+    // LSUIElement=true 避免在 Dock 中显示图标。
+    let lx_path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("./lx"));
+    let exe_path = macos.join("LexiangURLOpener");
+    let swift_source = format!(
+        r#"
+import Cocoa
+
+let lxPath = "{lx_path}"
+
+func forwardURL(_ url: String) {{
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: lxPath)
+    process.arguments = ["handle-url", url]
+    try? process.run()
+    process.waitUntilExit()
+    exit(0)
+}}
+
+// 优先从命令行参数获取 URL（macOS 首次启动时会把 URL 传给 argv）
+if CommandLine.arguments.count > 1 {{
+    forwardURL(CommandLine.arguments[1])
+}}
+
+// 注册 Apple Event handler 接收 kAEGetURL
+class URLHandler: NSObject {{
+    @objc func handleGetURL(_ event: NSAppleEventDescriptor, withReplyEvent: NSAppleEventDescriptor) {{
+        guard let url = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue else {{ return }}
+        forwardURL(url)
+    }}
+}}
+
+let handler = URLHandler()
+NSAppleEventManager.shared().setEventHandler(
+    handler,
+    andSelector: #selector(URLHandler.handleGetURL(_:withReplyEvent:)),
+    forEventClass: AEEventClass(kInternetEventClass),
+    andEventID: AEEventID(kAEGetURL)
+)
+
+// 启动事件循环，5 秒超时防止挂起
+DispatchQueue.main.asyncAfter(deadline: .now() + 5) {{
+    exit(1)
+}}
+
+NSApplication.shared.run()
+"#,
+        lx_path = lx_path.display()
+    );
+
+    // 写入 Swift 源码并编译
+    let swift_file = macos.join("LexiangURLOpener.swift");
+    fs::write(&swift_file, &swift_source)?;
+
+    let compile_output = std::process::Command::new("swiftc")
+        .args([
+            "-o",
+            &exe_path.display().to_string(),
+            &swift_file.display().to_string(),
+        ])
+        .output()?;
+
+    if !compile_output.status.success() {
+        let stderr = String::from_utf8_lossy(&compile_output.stderr);
+        anyhow::bail!("Swift 编译失败: {}", stderr.trim());
+    }
+
+    // 编译成功后删除源码
+    let _ = fs::remove_file(&swift_file);
+
+    // 3. 注册到 Launch Services
+    let lsregister = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
+    let _ = std::process::Command::new(lsregister)
+        .arg("-f")
+        .arg(&app_path)
+        .output();
+
+    // 4. 设为默认 handler
+    let swift_code = format!(
+        r#"import CoreServices
+LSSetDefaultHandlerForURLScheme("lexiang" as CFString, "{APP_BUNDLE_ID}" as CFString)"#
+    );
+    let _ = std::process::Command::new("swift")
+        .arg("-e")
+        .arg(&swift_code)
+        .output();
+
+    tracing::info!("lexiang:// URL scheme registered (macOS)");
+    Ok(())
+}
+
+// ── Windows: 注册表 HKCU\Software\Classes\lexiang ─────────────────────────
+
+#[cfg(target_os = "windows")]
+fn is_url_scheme_registered_impl() -> bool {
+    // 检查 HKCU\Software\Classes\lexiang 是否存在
+    let output = std::process::Command::new("reg")
+        .args(["query", r"HKCU\Software\Classes\lexiang", "/ve"])
+        .output();
+    match output {
+        Ok(out) => out.status.success(),
+        Err(_) => false,
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn register_url_scheme_impl() -> Result<()> {
+    let lx_path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("lx"));
+    let lx_str = lx_path.display().to_string();
+
+    // reg add HKCU\Software\Classes\lexiang /ve /d "URL:Lexiang CLI" /f
+    // reg add HKCU\Software\Classes\lexiang /v "URL Protocol" /f
+    // reg add HKCU\Software\Classes\lexiang\shell\open\command /ve /d "\"lx_path\" handle-url \"%1\"" /f
+    let reg_key = r"HKCU\Software\Classes\lexiang";
+
+    let commands = [
+        vec!["add", reg_key, "/ve", "/d", "URL:Lexiang CLI", "/f"],
+        vec!["add", reg_key, "/v", "URL Protocol", "/f"],
+        vec![
+            "add",
+            &format!(r"{}\shell\open\command", reg_key),
+            "/ve",
+            "/d",
+            &format!("\"{}\" handle-url \"%1\"", lx_str),
+            "/f",
+        ],
+    ];
+
+    for args in &commands {
+        let output = std::process::Command::new("reg").args(args).output()?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("reg add failed: {}", stderr.trim());
+        }
+    }
+
+    tracing::info!("lexiang:// URL scheme registered (Windows)");
+    Ok(())
+}
+
+// ── Linux: .desktop 文件 + update-desktop-database ────────────────────────
+
+#[cfg(target_os = "linux")]
+fn desktop_file_path() -> PathBuf {
+    dirs::data_local_dir()
+        .unwrap_or_else(|| PathBuf::from("/usr/local/share"))
+        .join("applications")
+        .join("lexiang-url-handler.desktop")
+}
+
+#[cfg(target_os = "linux")]
+fn is_url_scheme_registered_impl() -> bool {
+    desktop_file_path().exists()
+}
+
+#[cfg(target_os = "linux")]
+fn register_url_scheme_impl() -> Result<()> {
+    let lx_path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("lx"));
+    let desktop_dir = desktop_file_path()
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("Cannot determine applications directory"))?;
+    fs::create_dir_all(desktop_dir)?;
+
+    let desktop_entry = format!(
+        r#"[Desktop Entry]
+Type=Application
+Name=Lexiang URL Handler
+Exec="{}" handle-url %u
+MimeType=x-scheme-handler/lexiang;
+NoDisplay=true
+"#,
+        lx_path.display()
+    );
+    fs::write(desktop_file_path(), desktop_entry)?;
+
+    // 更新桌面数据库
+    let _ = std::process::Command::new("update-desktop-database")
+        .arg(desktop_dir)
+        .output();
+
+    // 设为默认 handler
+    let _ = std::process::Command::new("xdg-mime")
+        .args([
+            "default",
+            "lexiang-url-handler.desktop",
+            "x-scheme-handler/lexiang",
+        ])
+        .output();
+
+    tracing::info!("lexiang:// URL scheme registered (Linux)");
+    Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════
 //  Token 有效性检查 & 自动刷新
 // ═══════════════════════════════════════════════════════════
 
@@ -559,3 +982,306 @@ async fn exchange_code(
 }
 
 // open_browser 已移除 — 不允许自动打开浏览器，用户需手动复制链接
+
+// ═══════════════════════════════════════════════════════════
+//  客户端登录 — 网络流程
+// ═══════════════════════════════════════════════════════════
+
+/// 用 code 换取 cookie（调用内部 `auth_login` 接口）
+///
+/// `auth_login` 返回 JSON：`{"code": 0, "data": {"token": "jwt", "xsrf_token": "..."}}`
+/// 内部接口用 `Cookie: token={jwt}` 认证。
+async fn exchange_client_code_for_cookie(
+    http: &Client,
+    code: &str,
+    state: Option<&str>,
+) -> Result<String> {
+    let mut body = serde_json::json!({ "code": code });
+    if let Some(s) = state {
+        body["state"] = serde_json::Value::String(s.to_string());
+    }
+
+    let resp = http.post(CLIENT_AUTH_LOGIN_URL).json(&body).send().await?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("auth_login 请求失败 (HTTP {}): {}", status, body);
+    }
+
+    let resp_json: serde_json::Value = resp.json().await?;
+
+    // 检查业务 code
+    let biz_code = resp_json.get("code").and_then(serde_json::Value::as_i64);
+    if biz_code != Some(0) {
+        let msg = resp_json
+            .get("message")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        anyhow::bail!("auth_login 业务失败 (code={:?}): {}", biz_code, msg);
+    }
+
+    let token = resp_json
+        .pointer("/data/token")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("auth_login 响应中缺少 data.token"))?;
+
+    // 内部接口用 Cookie: token={token}
+    let cookie = format!("token={}", token);
+    tracing::info!(
+        token_len = token.len(),
+        "client login: extracted token from auth_login response"
+    );
+    Ok(cookie)
+}
+
+/// 用 cookie 获取 MCP access token
+async fn fetch_mcp_token_with_cookie(http: &Client, cookie: &str) -> Result<TokenData> {
+    let resp = http
+        .get(CLIENT_MCP_TOKENS_URL)
+        .header(reqwest::header::COOKIE, cookie)
+        .send()
+        .await?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("MCP tokens 请求失败 (HTTP {}): {}", status, body);
+    }
+
+    let json: serde_json::Value = resp.json().await?;
+    let access_token = extract_mcp_access_token(&json)?;
+
+    tracing::info!(
+        token_len = access_token.len(),
+        "client login: extracted MCP access token"
+    );
+
+    Ok(TokenData {
+        access_token,
+        refresh_token: None,
+        expires_at: None,
+        client_id: None,
+    })
+}
+
+/// 客户端登录完整流程：解析 code+state → 换 cookie → 获取 MCP token → 持久化
+pub async fn login_with_client_callback(callback_or_code: &str) -> Result<TokenData> {
+    let (code, state) = extract_client_callback_params(callback_or_code)?;
+
+    let http = Client::new();
+
+    // 1. 用 code (及 state) 换 cookie
+    let cookie = exchange_client_code_for_cookie(&http, &code, state.as_deref()).await?;
+
+    // 2. 用 cookie 获取 MCP token
+    let token = fetch_mcp_token_with_cookie(&http, &cookie).await?;
+
+    // 3. 两者都成功后持久化
+    let session = ClientSessionData {
+        cookie,
+        created_at: chrono::Utc::now().timestamp(),
+    };
+    save_client_session(&session)?;
+    save_token(&token)?;
+
+    Ok(token)
+}
+
+// ═══════════════════════════════════════════════════════════
+//  客户端登录 — 纯函数
+// ═══════════════════════════════════════════════════════════
+
+/// 获取客户端登录重定向 URL
+///
+/// `redirect_url`：登录完成后浏览器跳转的目标 URL。
+/// - `None` → 默认 `lexiang://auth-callback`（CLI 模式，需手动粘贴）
+/// - `Some(url)` → 自定义（如 VS Code 的 `vscode://lexiang.lefs-vscode/auth-callback`）
+pub fn client_login_url(redirect_url: Option<&str>) -> String {
+    let target = redirect_url.unwrap_or("lexiang://auth-callback");
+    format!(
+        "https://lexiangla.com/auth/login-redirect?redirect_url={}",
+        urlencoding::encode(target)
+    )
+}
+
+/// 从回调 URL 或原始 code 中提取授权码和 state
+///
+/// - 如果 `input` 包含 `://`，解析 URL 并读取 `code` 和 `state` 查询参数
+/// - 否则将非空 `input` 作为原始 code（state 为 None）
+fn extract_client_callback_params(input: &str) -> Result<(String, Option<String>)> {
+    let trimmed = input.trim();
+    if trimmed.contains("://") {
+        let url =
+            url::Url::parse(trimmed).map_err(|e| anyhow::anyhow!("Invalid callback URL: {e}"))?;
+        let code = url
+            .query_pairs()
+            .find(|(k, _)| k == "code")
+            .map(|(_, v)| v.to_string())
+            .ok_or_else(|| anyhow::anyhow!("Callback URL missing 'code' parameter"))?;
+        let state = url
+            .query_pairs()
+            .find(|(k, _)| k == "state")
+            .map(|(_, v)| v.to_string());
+        Ok((code, state))
+    } else if !trimmed.is_empty() {
+        Ok((trimmed.to_string(), None))
+    } else {
+        Err(anyhow::anyhow!("Empty code input"))
+    }
+}
+
+/// 从 `Set-Cookie` 响应头值列表构建 `Cookie` 请求头
+///
+/// 每个 `Set-Cookie` 值只保留第一个 `;` 前的 `name=value` 部分
+#[allow(dead_code)]
+fn build_cookie_header(set_cookie_values: &[String]) -> String {
+    set_cookie_values
+        .iter()
+        .map(|v| v.split(';').next().unwrap_or("").trim())
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+/// 从 MCP tokens API 响应中提取 `access_token`
+///
+/// 支持多种常见 JSON 结构：
+/// - `/data/tokens/0/access_token`
+/// - `/data/0/access_token`
+/// - `/tokens/0/access_token`
+/// - `/access_token`
+/// - 递归搜索 `access_token` 或 `token` 键
+fn extract_mcp_access_token(value: &serde_json::Value) -> Result<String> {
+    // 尝试常见路径
+    let paths: &[&[&str]] = &[
+        &["data", "tokens", "0", "access_token"],
+        &["data", "0", "access_token"],
+        &["tokens", "0", "access_token"],
+        &["access_token"],
+    ];
+
+    for path in paths {
+        let mut current = value;
+        for key in *path {
+            current = match current.get(key) {
+                Some(v) => v,
+                None => break,
+            };
+        }
+        if let Some(s) = current.as_str() {
+            return Ok(s.to_string());
+        }
+    }
+
+    // 递归搜索
+    fn find_token(val: &serde_json::Value) -> Option<String> {
+        match val {
+            serde_json::Value::Object(map) => {
+                if let Some(v) = map.get("access_token").and_then(|v| v.as_str()) {
+                    return Some(v.to_string());
+                }
+                if let Some(v) = map.get("token").and_then(|v| v.as_str()) {
+                    return Some(v.to_string());
+                }
+                for v in map.values() {
+                    if let Some(s) = find_token(v) {
+                        return Some(s);
+                    }
+                }
+                None
+            }
+            serde_json::Value::Array(arr) => {
+                for v in arr {
+                    if let Some(s) = find_token(v) {
+                        return Some(s);
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
+    find_token(value).ok_or_else(|| anyhow::anyhow!("No access_token found in MCP tokens response"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_client_callback_extracts_code_and_state() {
+        let (code, state) = extract_client_callback_params(
+            "lexiang://auth-callback?code=c8c3ffaf-e420-4328-8f70-f394e92b4534&state=01420d9d-c7c3-4e8a-b719-0dfb4b4bef48",
+        )
+        .unwrap();
+        assert_eq!(code, "c8c3ffaf-e420-4328-8f70-f394e92b4534");
+        assert_eq!(
+            state,
+            Some("01420d9d-c7c3-4e8a-b719-0dfb4b4bef48".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_client_callback_code_only() {
+        let (code, state) = extract_client_callback_params(
+            "lexiang://auth-callback?code=c8c3ffaf-e420-4328-8f70-f394e92b4534",
+        )
+        .unwrap();
+        assert_eq!(code, "c8c3ffaf-e420-4328-8f70-f394e92b4534");
+        assert_eq!(state, None);
+    }
+
+    #[test]
+    fn parse_client_callback_accepts_raw_code() {
+        let (code, state) =
+            extract_client_callback_params("c8c3ffaf-e420-4328-8f70-f394e92b4534").unwrap();
+        assert_eq!(code, "c8c3ffaf-e420-4328-8f70-f394e92b4534");
+        assert_eq!(state, None);
+    }
+
+    #[test]
+    fn cookie_header_keeps_name_value_pairs() {
+        let cookies = vec![
+            "uid=123; Path=/; HttpOnly".to_string(),
+            "session=abc; Path=/; Secure".to_string(),
+        ];
+        assert_eq!(build_cookie_header(&cookies), "uid=123; session=abc");
+    }
+
+    #[test]
+    fn extract_mcp_token_from_common_shapes() {
+        let response = serde_json::json!({
+            "code": 0,
+            "data": {
+                "tokens": [{ "access_token": "mcp-token-1", "enabled": true }]
+            }
+        });
+        assert_eq!(extract_mcp_access_token(&response).unwrap(), "mcp-token-1");
+    }
+
+    #[test]
+    fn extract_mcp_token_from_data_0_path() {
+        let response = serde_json::json!({
+            "data": [{ "access_token": "mcp-token-2" }]
+        });
+        assert_eq!(extract_mcp_access_token(&response).unwrap(), "mcp-token-2");
+    }
+
+    #[test]
+    fn extract_mcp_token_from_root_access_token() {
+        let response = serde_json::json!({
+            "access_token": "mcp-token-3"
+        });
+        assert_eq!(extract_mcp_access_token(&response).unwrap(), "mcp-token-3");
+    }
+
+    #[test]
+    fn extract_mcp_token_recursive_fallback() {
+        let response = serde_json::json!({
+            "result": { "nested": { "token": "deep-token" } }
+        });
+        assert_eq!(extract_mcp_access_token(&response).unwrap(), "deep-token");
+    }
+}

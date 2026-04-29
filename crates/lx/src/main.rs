@@ -92,10 +92,59 @@ async fn main() -> anyhow::Result<()> {
             // 版本命令后自动检查更新
             cmd::auto_check_update().await;
         }
-        Some(Commands::Login { token }) => {
+        Some(Commands::Login { token, client }) => {
             if let Some(t) = token {
+                if client {
+                    anyhow::bail!("--token and --client cannot be used together");
+                }
                 auth::save_token_direct(&t)?;
                 println!("✓ Token 已保存，登录成功");
+            } else if client {
+                // 清理上次残留的回调文件
+                let _ = auth::clear_callback_url();
+
+                // 尝试注册 URL scheme（如果尚未注册）
+                if !auth::is_url_scheme_registered() {
+                    if let Err(e) = auth::register_url_scheme() {
+                        tracing::debug!("URL scheme 注册失败，将回退到手动粘贴: {e}");
+                    } else {
+                        println!("✓ 已注册 lexiang:// URL scheme，浏览器回调将自动完成登录");
+                    }
+                }
+
+                let scheme_registered = auth::is_url_scheme_registered();
+                println!(
+                    "\n请在浏览器中打开以下链接完成登录：\n{}\n",
+                    auth::client_login_url(None)
+                );
+
+                if scheme_registered {
+                    // 写 pending 标记，等待文件 IPC 回调
+                    auth::write_pending_login()?;
+                    println!("浏览器登录完成后将自动回调，无需手动操作...");
+                    match auth::wait_for_callback_url().await {
+                        Ok(callback_url) => {
+                            let _ = auth::clear_pending_login();
+                            let _token = auth::login_with_client_callback(&callback_url).await?;
+                            println!("✓ 客户端登录成功，Cookie 与 MCP Token 已保存");
+                        }
+                        Err(e) => {
+                            let _ = auth::clear_pending_login();
+                            println!("\n自动回调超时: {e}");
+                            println!("请手动粘贴回调链接：");
+                            let mut callback = String::new();
+                            std::io::stdin().read_line(&mut callback)?;
+                            let _token = auth::login_with_client_callback(callback.trim()).await?;
+                            println!("✓ 客户端登录成功，Cookie 与 MCP Token 已保存");
+                        }
+                    }
+                } else {
+                    println!("登录完成后，请粘贴 lexiang://auth-callback?... 回调链接：");
+                    let mut callback = String::new();
+                    std::io::stdin().read_line(&mut callback)?;
+                    let _token = auth::login_with_client_callback(callback.trim()).await?;
+                    println!("✓ 客户端登录成功，Cookie 与 MCP Token 已保存");
+                }
             } else {
                 let _token = auth::login().await?;
                 println!("✓ 登录成功");
@@ -104,6 +153,18 @@ async fn main() -> anyhow::Result<()> {
         Some(Commands::Logout) => {
             auth::logout()?;
             println!("已登出");
+        }
+        Some(Commands::HandleUrl { url }) => {
+            if url.trim().is_empty() {
+                eprintln!("错误：回调 URL 为空");
+                std::process::exit(1);
+            }
+            auth::write_callback_url(&url)?;
+            if auth::has_pending_login() {
+                println!("✓ 已接收登录回调，正在完成登录...");
+            } else {
+                println!("✓ 已接收登录回调（无等待中的登录流程，回调 URL 已缓存）");
+            }
         }
         Some(Commands::Start { mount, size }) => {
             use std::path::PathBuf;

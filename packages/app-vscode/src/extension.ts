@@ -103,13 +103,17 @@ async function activateInternal(context: vscode.ExtensionContext): Promise<void>
 
   log('扩展激活完成');
 
-  // 6. 收集所有 disposable
+  // 6. 注册 URI handler（浏览器回调 vscode://lexiang.lefs-vscode/auth-callback 时自动触发）
+  const uriHandler = vscode.window.registerUriHandler(services.authBridge);
+
+  // 7. 收集所有 disposable
   context.subscriptions.push(
     ...views.disposables,
     ...commandDisposables,
     services.backgroundSync,
     services.updateChecker,
     services.rpcClient, // 确保 deactivate 时关闭 lx serve
+    uriHandler,
     revealOnActivate,
     { dispose: () => outputChannel?.dispose() },
   );
