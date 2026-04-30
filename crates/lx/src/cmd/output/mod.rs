@@ -2,7 +2,13 @@ use serde_json::Value;
 use tabled::{builder::Builder, settings::Style};
 
 /// Fields hidden by default in table/CSV/markdown output to reduce noise.
-const DEFAULT_HIDDEN_FIELDS: &[&str] = &["cover", "created_by", "updated_by"];
+const DEFAULT_HIDDEN_FIELDS: &[&str] = &[
+    "cover",
+    "created_by",
+    "updated_by",
+    "description",
+    "signature",
+];
 
 /// Options for controlling which fields appear in table output.
 pub struct FieldFilter {
@@ -124,7 +130,8 @@ pub fn print_csv(value: &Value, filter: &FieldFilter) {
             if let Value::Array(arr) = val {
                 if !arr.is_empty() {
                     if let Some(Value::Object(first)) = arr.first() {
-                        let all_columns: Vec<&str> = first.keys().map(std::string::String::as_str).collect();
+                        let all_columns: Vec<&str> =
+                            first.keys().map(std::string::String::as_str).collect();
                         let columns = filter.filter_columns(all_columns);
                         println!("{}", columns.join(","));
 
@@ -162,7 +169,8 @@ pub fn print_markdown(value: &Value, filter: &FieldFilter) {
                 if !arr.is_empty() {
                     println!("## {}\n", key);
                     if let Some(Value::Object(first)) = arr.first() {
-                        let all_columns: Vec<&str> = first.keys().map(std::string::String::as_str).collect();
+                        let all_columns: Vec<&str> =
+                            first.keys().map(std::string::String::as_str).collect();
                         let columns = filter.filter_columns(all_columns);
                         println!("| {} |", columns.join(" | "));
                         println!(

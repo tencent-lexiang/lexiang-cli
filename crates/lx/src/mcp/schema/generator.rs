@@ -1,6 +1,6 @@
 use crate::mcp::schema::types::{
-    extract_command_name, extract_namespace, to_kebab_case, McpCategory, McpPropertySchema,
-    McpSchemaCollection, McpToolSchema,
+    extract_command_name, extract_namespace, get_tool_extra_aliases, to_kebab_case, McpCategory,
+    McpPropertySchema, McpSchemaCollection, McpToolSchema,
 };
 use clap::{Arg, ArgAction, Command};
 
@@ -62,10 +62,21 @@ impl<'a> CommandGenerator<'a> {
             .clone()
             .unwrap_or_else(|| format!("Execute {}", tool.name));
 
-        let mut cmd = Command::new(leak_string(command_name))
-            .about(leak_string(description))
-            // 存储原始 tool name 用于执行
-            .alias(leak_string(tool.name.clone()))
+        let mut cmd =
+            Command::new(leak_string(command_name.clone())).about(leak_string(description));
+
+        // 存储原始 tool name 作为 alias，方便用原始名称调用
+        // 避免与 command name 重复导致 clap panic（如 whoami）
+        if command_name != tool.name {
+            cmd = cmd.alias(leak_string(tool.name.clone()));
+        }
+
+        // 注册额外 alias（如 space recent 也可以用 space frequent 调用）
+        for extra_alias in get_tool_extra_aliases(&tool.name) {
+            cmd = cmd.alias(leak_string(extra_alias.to_string()));
+        }
+
+        cmd = cmd
             // 添加通用的 --format 参数
             .arg(
                 Arg::new("format")

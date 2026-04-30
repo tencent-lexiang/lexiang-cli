@@ -139,7 +139,7 @@
     {
       "name": "knowledge.entry",
       "description": "知识增删改查接口",
-      "tool_count": 10,
+      "tool_count": 11,
       "tools": [
         {
           "name": "entry_create_entry",
@@ -180,6 +180,10 @@
         {
           "name": "entry_rename_entry",
           "description": "重命名知识条目。entry_id 为条目ID，name 为新名称"
+        },
+        {
+          "name": "entry_list_recently_entries",
+          "description": "获取最近浏览的条目列表"
         }
       ]
     },
@@ -1518,6 +1522,40 @@
           }
         },
         "type": "object"
+      }
+    },
+    "entry_list_recently_entries": {
+      "name": "entry_list_recently_entries",
+      "description": "获取最近浏览的条目列表",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "_mcp_fields": {
+            "type": "string",
+            "description": "\nOptional. Comma-separated or JSON array of field paths to include in the response.\nIf omitted, fields marked with x-default-returned in outputSchema are returned by default.\nOnly set this parameter when you need additional fields beyond the defaults.\n\"Use dot notation for nested fields (e.g. \\\"entry.id,entry.name\\\").\n"
+          },
+          "space_id": {
+            "type": "string",
+            "description": "知识库ID"
+          },
+          "limit": {
+            "type": "number",
+            "description": "限制每页的数量"
+          },
+          "page_token": {
+            "type": "string",
+            "description": "分页 token"
+          },
+          "include": {
+            "type": "string",
+            "description": "包含的额外信息，如 favorite、space、team"
+          },
+          "with_team": {
+            "type": "boolean",
+            "description": "查询team"
+          }
+        },
+        "required": []
       }
     },
     "file_apply_upload": {

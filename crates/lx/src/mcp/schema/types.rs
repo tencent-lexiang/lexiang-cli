@@ -390,12 +390,25 @@ pub fn extract_namespace(category: &str) -> String {
 /// "`block_create_block_descendant`" -> "create-descendant"
 /// "`search_kb_search`" -> "kb"
 /// "`tx_meeting_import_tx_meeting_record`" -> "import-record"
-/// MCP tool name → CLI command name 的显式映射表。
+/// MCP tool name → (主命令名, 额外 alias 列表) 的显式映射表。
 ///
-/// 当 MCP 工具命名不直观（如 `describe_personal_space` → `mine`），
-/// 或需要固定为更地道的 CLI 命令时，在此统一维护。
+/// 当 MCP 工具命名不直观，或需要固定为更地道的 CLI 命令时，在此统一维护。
 /// 优先级最高，匹配后直接返回，不走通用提取逻辑。
-const TOOL_COMMAND_ALIASES: &[(&str, &str)] = &[("space_describe_personal_space", "mine")];
+/// 第一个元素为主命令名，第二个元素为额外 alias（用于同一工具的多种叫法）。
+const TOOL_COMMAND_ALIASES: &[(&str, (&str, &[&str]))] = &[
+    ("space_describe_personal_space", ("mine", &[])),
+    ("space_list_recently_spaces", ("recent", &["frequent"])),
+    ("team_list_frequent_teams", ("frequent", &["recent"])),
+];
+
+/// 获取工具的额外 alias 列表（不含主命令名和原始 tool name）。
+pub fn get_tool_extra_aliases(tool_name: &str) -> &[&str] {
+    if let Some(entry) = TOOL_COMMAND_ALIASES.iter().find(|(k, _)| *k == tool_name) {
+        entry.1 .1
+    } else {
+        &[]
+    }
+}
 
 pub fn extract_command_name(tool_name: &str, namespace: &str) -> String {
     let parts: Vec<&str> = tool_name.split('_').collect();
@@ -405,8 +418,8 @@ pub fn extract_command_name(tool_name: &str, namespace: &str) -> String {
     }
 
     // 显式映射表优先（O(n) 但表很小）
-    if let Some(alias) = TOOL_COMMAND_ALIASES.iter().find(|(k, _)| *k == tool_name) {
-        return alias.1.to_string();
+    if let Some(entry) = TOOL_COMMAND_ALIASES.iter().find(|(k, _)| *k == tool_name) {
+        return entry.1 .0.to_string();
     }
 
     // 特殊处理常见模式
@@ -519,7 +532,7 @@ mod tests {
 
     #[test]
     fn test_extract_command_name() {
-        // Standard patterns
+        // Standard patterns (no alias)
         assert_eq!(extract_command_name("team_list_teams", "team"), "list");
         assert_eq!(
             extract_command_name("team_describe_team", "team"),
@@ -531,7 +544,7 @@ mod tests {
             "create"
         );
 
-        // Block patterns
+        // Block patterns (no alias, uses generic extraction)
         assert_eq!(
             extract_command_name("block_create_block_descendant", "block"),
             "create-descendant"
@@ -541,7 +554,7 @@ mod tests {
             "list-children"
         );
 
-        // Search patterns
+        // Search patterns (no alias)
         assert_eq!(extract_command_name("search_kb_search", "search"), "kb");
 
         // Meeting patterns (tx_meeting_ prefix)
@@ -550,10 +563,32 @@ mod tests {
             "import-record"
         );
 
-        // Special mappings
+        // Alias mappings
         assert_eq!(
             extract_command_name("space_describe_personal_space", "space"),
             "mine"
+        );
+        assert_eq!(
+            extract_command_name("space_list_recently_spaces", "space"),
+            "recent"
+        );
+        assert_eq!(
+            extract_command_name("team_list_frequent_teams", "team"),
+            "frequent"
+        );
+
+        // Extra aliases
+        assert_eq!(
+            get_tool_extra_aliases("space_list_recently_spaces"),
+            &["frequent"]
+        );
+        assert_eq!(
+            get_tool_extra_aliases("team_list_frequent_teams"),
+            &["recent"]
+        );
+        assert_eq!(
+            get_tool_extra_aliases("space_describe_personal_space"),
+            &[] as &[&str]
         );
     }
 }
