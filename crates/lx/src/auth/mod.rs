@@ -737,17 +737,12 @@ fn register_url_scheme_impl() -> Result<()> {
     // reg add HKCU\Software\Classes\lexiang\shell\open\command /ve /d "\"lx_path\" handle-url \"%1\"" /f
     let reg_key = r"HKCU\Software\Classes\lexiang";
 
+    let command_path = format!(r"{}\shell\open\command", reg_key);
+    let command_value = format!("\"{}\" handle-url \"%1\"", lx_str);
     let commands = [
         vec!["add", reg_key, "/ve", "/d", "URL:Lexiang CLI", "/f"],
         vec!["add", reg_key, "/v", "URL Protocol", "/f"],
-        vec![
-            "add",
-            &format!(r"{}\shell\open\command", reg_key),
-            "/ve",
-            "/d",
-            &format!("\"{}\" handle-url \"%1\"", lx_str),
-            "/f",
-        ],
+        vec!["add", &command_path, "/ve", "/d", &command_value, "/f"],
     ];
 
     for args in &commands {
@@ -780,7 +775,8 @@ fn is_url_scheme_registered_impl() -> bool {
 #[cfg(target_os = "linux")]
 fn register_url_scheme_impl() -> Result<()> {
     let lx_path = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("lx"));
-    let desktop_dir = desktop_file_path()
+    let desktop_path = desktop_file_path();
+    let desktop_dir = desktop_path
         .parent()
         .ok_or_else(|| anyhow::anyhow!("Cannot determine applications directory"))?;
     fs::create_dir_all(desktop_dir)?;

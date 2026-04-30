@@ -95,7 +95,10 @@ impl DaemonManager {
         }
 
         // Clean up PID file
-        self.pidfile.remove()?;
+        #[cfg(unix)]
+        {
+            self.pidfile.remove()?;
+        }
 
         println!("守护进程已停止");
 
