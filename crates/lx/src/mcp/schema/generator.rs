@@ -111,6 +111,10 @@ impl<'a> CommandGenerator<'a> {
     fn add_arguments(&self, mut cmd: Command, schema: &McpToolSchema) -> Command {
         if let Some(ref input_schema) = schema.input_schema {
             for (name, prop) in &input_schema.properties {
+                // 跳过内部字段（以 _ 开头），这些由 CLI 自动注入
+                if name.starts_with('_') {
+                    continue;
+                }
                 let arg = self.create_argument(name, prop, &input_schema.required);
                 cmd = cmd.arg(arg);
             }
@@ -185,6 +189,11 @@ pub fn build_tool_args(matches: &clap::ArgMatches, schema: &McpToolSchema) -> se
 
     if let Some(ref input_schema) = schema.input_schema {
         for (name, prop) in &input_schema.properties {
+            // 跳过内部字段（以 _ 开头），这些由 CLI 自动注入
+            if name.starts_with('_') {
+                continue;
+            }
+
             let type_str = prop.type_.as_deref().unwrap_or("string");
 
             let value = match type_str {

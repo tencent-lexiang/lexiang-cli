@@ -4,6 +4,34 @@
 
 知识库和团队管理的所有工具。核心价值：帮助用户定位目标知识库、获取 `root_entry_id`（后续操作条目的起点）、管理团队组织结构。
 
+## 🌟 我的知识库（一等公民）
+
+**最快捷的入口：** 用户说"我的知识库"时直接使用，无需先查团队。
+
+```bash
+# 获取个人知识库（如果不存在则自动创建）
+lx space mine
+
+# 同步创建（等待创建完成后直接返回 space 对象）
+lx space mine --sync
+```
+
+**返回结构：**
+
+- 正常返回：`{ space: { id, name, root_entry_id, ... } }`
+- 异步创建中：`{ task_id: "...", is_creating: true }`（需要稍后重试或轮询）
+
+**典型流程：**
+
+```bash
+# Step 1: 获取我的知识库
+lx space mine
+# → 拿到 space_id 和 root_entry_id
+
+# Step 2: 直接操作（→ lx-entry skill）
+lx entry list-children --parent-id root_entry_xxx
+```
+
 ## 使用场景
 
 ### 用户说"帮我看看我的知识库"——从团队开始逐级定位

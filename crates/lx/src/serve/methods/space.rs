@@ -1,4 +1,4 @@
-//! Space methods: list, listRecent, listByTeam, describe, mount, unmount, sync, changes
+//! Space methods: list, listRecent, listByTeam, describe, mine, mount, unmount, sync, changes
 
 use crate::rpc_method;
 use crate::serve::{JsonRpcResult, ServeContext};
@@ -58,6 +58,28 @@ async fn handle_space_describe(ctx: &ServeContext, params: Value) -> JsonRpcResu
     Ok(space)
 }
 
+async fn handle_space_mine(ctx: &ServeContext, params: Value) -> JsonRpcResult {
+    let is_async = params
+        .get("is_async")
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+
+    let result = ctx
+        .mcp_call(
+            "space_describe_personal_space",
+            serde_json::json!({ "is_async": is_async }),
+        )
+        .await?;
+
+    // 正常返回: { space: { id, name, root_entry_id, ... } } → 提取 space
+    // 异步创建: { task_id: "...", is_creating: true } → 直接透传
+    if let Some(space) = result.get("space") {
+        Ok(space.clone())
+    } else {
+        Ok(result)
+    }
+}
+
 async fn handle_space_mount(ctx: &ServeContext, params: Value) -> JsonRpcResult {
     let space_id = ctx.require_str(&params, "space_id")?;
     // Full implementation will start git clone + background sync
@@ -105,6 +127,7 @@ inventory::submit! { rpc_method!("space/list", handle_space_list) }
 inventory::submit! { rpc_method!("space/listRecent", handle_space_list_recent) }
 inventory::submit! { rpc_method!("space/listByTeam", handle_space_list_by_team) }
 inventory::submit! { rpc_method!("space/describe", handle_space_describe) }
+inventory::submit! { rpc_method!("space/mine", handle_space_mine) }
 inventory::submit! { rpc_method!("space/mount", handle_space_mount) }
 inventory::submit! { rpc_method!("space/unmount", handle_space_unmount) }
 inventory::submit! { rpc_method!("space/sync", handle_space_sync) }

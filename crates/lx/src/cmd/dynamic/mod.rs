@@ -57,17 +57,21 @@ pub async fn handle_dynamic_command(args: &[String], schema: &McpSchemaCollectio
     let all_fields = tool_matches.get_flag("all_fields");
     let filter = FieldFilter::new(fields, all_fields);
 
+    // 统一提取 data 层：MCP 返回 { code, data, message, request_id }，
+    // 用户关心的是 data 内的实际数据，其余为传输元数据。
+    let data = result.get("data").unwrap_or(&result);
+
     match format {
-        "json" => println!("{}", result),
-        "table" => print_table(&result, &filter),
+        "json" => println!("{}", data),
+        "table" => print_table(data, &filter),
         "yaml" => {
-            let yaml = serde_yaml::to_string(&result)
-                .context("Failed to convert result to YAML format")?;
+            let yaml =
+                serde_yaml::to_string(data).context("Failed to convert result to YAML format")?;
             println!("{}", yaml);
         }
-        "csv" => print_csv(&result, &filter),
-        "markdown" => print_markdown(&result, &filter),
-        _ => println!("{}", serde_json::to_string_pretty(&result)?),
+        "csv" => print_csv(data, &filter),
+        "markdown" => print_markdown(data, &filter),
+        _ => println!("{}", serde_json::to_string_pretty(data)?),
     }
 
     Ok(())

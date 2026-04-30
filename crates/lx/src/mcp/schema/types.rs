@@ -390,11 +390,23 @@ pub fn extract_namespace(category: &str) -> String {
 /// "`block_create_block_descendant`" -> "create-descendant"
 /// "`search_kb_search`" -> "kb"
 /// "`tx_meeting_import_tx_meeting_record`" -> "import-record"
+/// MCP tool name → CLI command name 的显式映射表。
+///
+/// 当 MCP 工具命名不直观（如 `describe_personal_space` → `mine`），
+/// 或需要固定为更地道的 CLI 命令时，在此统一维护。
+/// 优先级最高，匹配后直接返回，不走通用提取逻辑。
+const TOOL_COMMAND_ALIASES: &[(&str, &str)] = &[("space_describe_personal_space", "mine")];
+
 pub fn extract_command_name(tool_name: &str, namespace: &str) -> String {
     let parts: Vec<&str> = tool_name.split('_').collect();
 
     if parts.len() < 2 {
         return tool_name.replace('_', "-");
+    }
+
+    // 显式映射表优先（O(n) 但表很小）
+    if let Some(alias) = TOOL_COMMAND_ALIASES.iter().find(|(k, _)| *k == tool_name) {
+        return alias.1.to_string();
     }
 
     // 特殊处理常见模式
@@ -536,6 +548,12 @@ mod tests {
         assert_eq!(
             extract_command_name("tx_meeting_import_tx_meeting_record", "meeting"),
             "import-record"
+        );
+
+        // Special mappings
+        assert_eq!(
+            extract_command_name("space_describe_personal_space", "space"),
+            "mine"
         );
     }
 }

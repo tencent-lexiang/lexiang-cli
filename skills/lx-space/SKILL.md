@@ -1,7 +1,7 @@
 ---
 name: lx-space
-version: 1.0.0
-description: "乐享知识库与团队管理。当用户需要查看、管理知识库（空间）或团队信息时使用。触发词：知识库、空间、团队、space、team"
+version: 1.1.0
+description: "乐享知识库与团队管理。当用户需要查看、管理知识库（空间）或团队信息时使用。触发词：知识库、空间、团队、我的知识库、space、team"
 metadata:
   requires:
     bins: ["lx"]
@@ -15,6 +15,7 @@ metadata:
 
 **进入场景：**
 
+- 用户说"我的知识库"/"帮我打开我的知识库" → **直接用 `lx space mine`**
 - 用户说"我的知识库有哪些"/"帮我看看 XX 团队的知识库"
 - 用户说"找一下 YY 知识库"/"最近的知识库"
 - 用户说"这个知识库的根节点是什么"
@@ -29,6 +30,7 @@ metadata:
 
 ```text
 识别场景 →
+├── "我的知识库"/"帮我打开我的知识库"? → lx space mine（一等公民，最优先）
 ├── 不知道在哪个团队? → lx team list-teams 或 lx team list-frequent-teams
 ├── 知道团队，找知识库? → lx space list-spaces --team-id <ID>
 ├── 知道知识库 ID? → lx space describe-space --space-id <ID>
@@ -38,6 +40,12 @@ metadata:
 
 ## ⚠️ 高风险操作与默认优先路径
 
+**"我的知识库"是一等公民工具：**
+
+- 用户提到"我的知识库"时，**直接用 `lx space mine`**，这是最快的路径
+- 该命令会自动获取（或创建）用户的个人知识库，返回 `space_id` 和 `root_entry_id`
+- 如果返回 `is_creating: true`，说明知识库正在异步创建，需要用 `task_id` 轮询
+
 **获取 root_entry_id 是关键：**
 
 - 后续操作条目（创建页面、浏览目录树）都需要先通过 `lx space describe-space` 拿到 `root_entry_id`
@@ -45,18 +53,21 @@ metadata:
 
 **默认优先路径：**
 
-1. 用户说"最近的知识库" → 直接用 `lx space list-recently-spaces`，不要走 team → space 全链路
-2. 需要创建页面 → 先获取 `root_entry_id`，再切换到 lx-entry skill
+1. 用户说"我的知识库" → 直接用 `lx space mine`
+2. 用户说"最近的知识库" → 直接用 `lx space list-recently-spaces`，不要走 team → space 全链路
+3. 需要创建页面 → 先获取 `root_entry_id`，再切换到 lx-entry skill
 
 **层级关系：**
 
 - 团队(Team) → 知识库(Space) → 条目(Entry)
 - 知识库必须属于某个团队
+- 个人知识库也属于一个特殊的个人团队
 
 ## 可用工具
 
 | 命令 | 说明 | 参考 |
 |------|------|------|
+| `lx space mine` | 🌟 获取我的知识库（自动创建） | [space-team.md](references/space-team.md) |
 | `lx team list-teams` | 列出用户可访问的所有团队 | [space-team.md](references/space-team.md) |
 | `lx team list-frequent-teams` | 获取常用团队（按频率排序） | [space-team.md](references/space-team.md) |
 | `lx team describe-team` | 获取团队详情 | [space-team.md](references/space-team.md) |
@@ -66,13 +77,24 @@ metadata:
 
 ## 🎯 执行规则
 
-1. **层级关系**：团队(Team) → 知识库(Space) → 条目(Entry)。知识库必须属于某个团队。
-2. **获取 root_entry_id 是关键**：后续操作条目（创建页面、浏览目录树）都需要先通过 `lx space describe-space` 拿到 `root_entry_id`。
-3. **快速路径优先**：用户说"最近的知识库"时直接用 `lx space list-recently-spaces`，不要走 team → space 全链路。
-4. **团队首页链接**：`{domain}/t/{team_id}/spaces`
-5. **知识库访问链接**：`{domain}/spaces/{space_id}`
+1. **"我的知识库"优先**：用户提到"我的知识库"时直接用 `lx space mine`，不需要先查团队或列表。
+2. **层级关系**：团队(Team) → 知识库(Space) → 条目(Entry)。知识库必须属于某个团队。
+3. **获取 root_entry_id 是关键**：后续操作条目（创建页面、浏览目录树）都需要先通过 `lx space describe-space` 拿到 `root_entry_id`。
+4. **快速路径优先**：用户说"最近的知识库"时直接用 `lx space list-recently-spaces`，不要走 team → space 全链路。
+5. **团队首页链接**：`{domain}/t/{team_id}/spaces`
+6. **知识库访问链接**：`{domain}/spaces/{space_id}`
 
 ## 典型组合流程
+
+### 🌟 快速进入我的知识库
+
+```bash
+# 一键获取个人知识库（自动创建）
+lx space mine
+
+# 返回 space_id 和 root_entry_id，可直接后续操作
+lx entry list-children --parent-id root_entry_xxx
+```
 
 ### 从团队到知识库到文档
 

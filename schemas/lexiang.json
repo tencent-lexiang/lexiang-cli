@@ -228,7 +228,7 @@
     {
       "name": "knowledge.space",
       "description": "知识库接口",
-      "tool_count": 3,
+      "tool_count": 4,
       "tools": [
         {
           "name": "space_describe_space",
@@ -241,6 +241,10 @@
         {
           "name": "space_list_spaces",
           "description": "获取团队下的知识库列表。team_id 为必填参数（需先通过 ListTeams 获取团队ID），可选 permission 参数过滤有特定权限的知识库。返回 spaces 数组，每个包含 id、name、root_entry_id 等字段"
+        },
+        {
+          "name": "space_describe_personal_space",
+          "description": "获取个人知识库（如果不存在则自动创建）。返回个人知识库信息，关键返回字段: space（知识库对象）、task_id（异步创建时的任务ID）、is_creating（是否正在创建中）。如果返回 task_id，可通过 DescribePersonalSpaceTask 查询创建进度"
         }
       ]
     },
@@ -15078,6 +15082,19 @@
           }
         },
         "type": "object"
+      }
+    },
+    "space_describe_personal_space": {
+      "name": "space_describe_personal_space",
+      "description": "获取个人知识库（如果不存在则自动创建）。返回个人知识库信息，关键返回字段: space（知识库对象）、task_id（异步创建时的任务ID）、is_creating（是否正在创建中）。如果返回 task_id，可通过 DescribePersonalSpaceTask 查询创建进度",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "is_async": {
+            "type": "boolean",
+            "description": "是否异步创建（true=异步创建返回task_id, false=同步创建直接返回space）默认true"
+          }
+        }
       }
     }
   }

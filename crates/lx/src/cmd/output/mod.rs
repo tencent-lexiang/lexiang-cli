@@ -1,4 +1,5 @@
 use serde_json::Value;
+use tabled::{builder::Builder, settings::Style};
 
 /// Fields hidden by default in table/CSV/markdown output to reduce noise.
 const DEFAULT_HIDDEN_FIELDS: &[&str] = &["cover", "created_by", "updated_by"];
@@ -19,16 +20,13 @@ impl FieldFilter {
     /// Filter columns: apply --fields whitelist or remove `DEFAULT_HIDDEN_FIELDS`.
     pub fn filter_columns<'a>(&self, columns: Vec<&'a str>) -> Vec<&'a str> {
         if let Some(ref fields) = self.fields {
-            // --fields: only show specified fields that exist in data
             columns
                 .into_iter()
                 .filter(|c| fields.iter().any(|f| f == c))
                 .collect()
         } else if self.all_fields {
-            // --all-fields: show everything
             columns
         } else {
-            // Default: hide noisy fields
             columns
                 .into_iter()
                 .filter(|c| !DEFAULT_HIDDEN_FIELDS.contains(c))
@@ -38,12 +36,11 @@ impl FieldFilter {
 }
 
 pub fn print_table(value: &Value, filter: &FieldFilter) {
-    let data = value.get("data").unwrap_or(value);
-
-    match data {
+    match value {
         Value::Array(arr) => print_array_table(arr, filter),
         Value::Object(obj) => {
-            for (key, val) in obj {
+            // 如果某字段是对象数组，优先按数组表格输出
+            for (key, val) in obj.iter() {
                 if let Value::Array(arr) = val {
                     if !arr.is_empty() {
                         println!("{}:", key);
@@ -52,85 +49,82 @@ pub fn print_table(value: &Value, filter: &FieldFilter) {
                     }
                 }
             }
-            for (key, val) in obj {
-                println!("{}: {}", key, format_value(val));
+            // 如果顶层只有一个 key 且值是对象，展开（如 { space: {...} }）
+            if obj.len() == 1 {
+                if let Some(Value::Object(inner)) = obj.values().next() {
+                    print_kv_table(inner, filter);
+                    return;
+                }
             }
+            // 其他对象也按 kv 表格输出
+            print_kv_table(obj, filter);
         }
-        _ => println!("{}", format_value(data)),
+        _ => println!("{}", format_value(value)),
     }
 }
 
+/// 数组对象 → 水平表格（每行一条记录，列 = 字段）
 fn print_array_table(arr: &[Value], filter: &FieldFilter) {
     if arr.is_empty() {
         println!("(empty)");
         return;
     }
 
-    if let Some(Value::Object(first)) = arr.first() {
-        let all_columns: Vec<&str> = first.keys().map(std::string::String::as_str).collect();
-        let columns = filter.filter_columns(all_columns);
-
-        let mut widths: Vec<usize> = columns.iter().map(|c| c.len()).collect();
-        for item in arr {
-            if let Value::Object(obj) = item {
-                for (i, col) in columns.iter().enumerate() {
-                    let val_len = format_value(obj.get(*col).unwrap_or(&Value::Null)).len();
-                    if val_len > widths[i] {
-                        widths[i] = val_len.min(40);
-                    }
-                }
-            }
-        }
-
-        let header: Vec<String> = columns
-            .iter()
-            .zip(&widths)
-            .map(|(c, w)| format!("{:<width$}", c, width = *w))
-            .collect();
-        println!("{}", header.join(" | "));
-        println!(
-            "{}",
-            widths
-                .iter()
-                .map(|w| "-".repeat(*w))
-                .collect::<Vec<_>>()
-                .join("-+-")
-        );
-
-        for item in arr {
-            if let Value::Object(obj) = item {
-                let row: Vec<String> = columns
-                    .iter()
-                    .zip(&widths)
-                    .map(|(col, w)| {
-                        let val = format_value(obj.get(*col).unwrap_or(&Value::Null));
-                        if val.len() > *w {
-                            format!("{:.width$}", val, width = w - 1).to_string() + "…"
-                        } else {
-                            format!("{:<width$}", val, width = *w)
-                        }
-                    })
-                    .collect();
-                println!("{}", row.join(" | "));
-            }
-        }
-    } else {
+    let Some(Value::Object(first)) = arr.first() else {
         for item in arr {
             println!("{}", format_value(item));
         }
+        return;
+    };
+
+    let all_columns: Vec<&str> = first.keys().map(std::string::String::as_str).collect();
+    let columns = filter.filter_columns(all_columns);
+
+    let mut builder = Builder::default();
+    builder.push_record(columns.iter().map(std::string::ToString::to_string));
+
+    for item in arr {
+        if let Value::Object(obj) = item {
+            let row: Vec<String> = columns
+                .iter()
+                .map(|col| format_value(obj.get(*col).unwrap_or(&Value::Null)))
+                .collect();
+            builder.push_record(row);
+        }
     }
+
+    let mut table = builder.build();
+    table.with(Style::rounded());
+
+    println!("{table}");
+}
+
+/// 单个对象 → 垂直表格（Field | Value 两列）
+fn print_kv_table(obj: &serde_json::Map<String, Value>, filter: &FieldFilter) {
+    let all_keys: Vec<&str> = obj.keys().map(std::string::String::as_str).collect();
+    let keys = filter.filter_columns(all_keys);
+
+    let mut builder = Builder::default();
+    builder.push_record(vec!["Field".to_string(), "Value".to_string()]);
+
+    for key in &keys {
+        let val = obj.get(*key).unwrap_or(&Value::Null);
+        builder.push_record(vec![key.to_string(), format_value(val)]);
+    }
+
+    let mut table = builder.build();
+    table.with(Style::modern());
+
+    println!("{table}");
 }
 
 pub fn print_csv(value: &Value, filter: &FieldFilter) {
-    let data = value.get("data").unwrap_or(value);
-
-    if let Value::Object(obj) = data {
+    if let Value::Object(obj) = value {
         for (_, val) in obj {
             if let Value::Array(arr) = val {
                 if !arr.is_empty() {
                     if let Some(Value::Object(first)) = arr.first() {
-                        let all_columns: Vec<&str> =
-                            first.keys().map(std::string::String::as_str).collect();
+                        let all_columns: Vec<&str> = first.keys().map(std::string::String::as_str).collect();
                         let columns = filter.filter_columns(all_columns);
                         println!("{}", columns.join(","));
 
@@ -162,16 +156,13 @@ pub fn print_csv(value: &Value, filter: &FieldFilter) {
 }
 
 pub fn print_markdown(value: &Value, filter: &FieldFilter) {
-    let data = value.get("data").unwrap_or(value);
-
-    if let Value::Object(obj) = data {
+    if let Value::Object(obj) = value {
         for (key, val) in obj {
             if let Value::Array(arr) = val {
                 if !arr.is_empty() {
                     println!("## {}\n", key);
                     if let Some(Value::Object(first)) = arr.first() {
-                        let all_columns: Vec<&str> =
-                            first.keys().map(std::string::String::as_str).collect();
+                        let all_columns: Vec<&str> = first.keys().map(std::string::String::as_str).collect();
                         let columns = filter.filter_columns(all_columns);
                         println!("| {} |", columns.join(" | "));
                         println!(
@@ -210,7 +201,6 @@ fn format_value(value: &Value) -> String {
         Value::Null => String::new(),
         Value::Bool(b) => b.to_string(),
         Value::Number(n) => {
-            // 自动检测 Unix 时间戳（10 位数字，合理范围 2001-2040）
             if let Some(ts) = n.as_i64() {
                 if ts > 1_000_000_000 && ts < 2_200_000_000 {
                     if let Some(dt) = chrono::DateTime::from_timestamp(ts, 0) {
