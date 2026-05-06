@@ -29,7 +29,7 @@ oauth2 = { version = "5", default-features = false, features = ["rustls-tls"] }
 url = "2"
 base64 = "0.22"
 sha2 = "0.10"
-rand = "0.9"
+rand = "0.10"
 axum = "0.8"
 tokio-util = { version = "0.7", features = ["io"] }
 futures = "0.3"
@@ -45,7 +45,7 @@ signal-hook = "0.3"
 rustyline = "15"
 
 # Git worktree support (gitoxide) - cross-platform
-gix = { version = "0.81", default-features = false, features = [
+gix = { version = "0.83", default-features = false, features = [
     "max-control",
     "worktree-mutation",
     "index",
