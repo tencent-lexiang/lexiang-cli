@@ -26,6 +26,22 @@ pub fn parse_space_id(input: &str) -> String {
     input.to_string()
 }
 
+/// 从页面 URL 或纯 ID 中解析出 `entry_id`。
+pub fn parse_entry_id(input: &str) -> String {
+    if let Ok(url) = url::Url::parse(input) {
+        if is_lexiang_host(url.host_str().unwrap_or("")) {
+            let segments: Vec<&str> = url
+                .path_segments()
+                .map(std::iter::Iterator::collect)
+                .unwrap_or_default();
+            if segments.len() >= 2 && segments[0] == "pages" {
+                return segments[1].to_string();
+            }
+        }
+    }
+    input.to_string()
+}
+
 /// 判断是否是乐享域名
 fn is_lexiang_host(host: &str) -> bool {
     host.ends_with(".lexiangla.com") || host == "lexiangla.com" || host == "lexiang.tencent.com"
@@ -81,6 +97,14 @@ mod tests {
     fn test_unknown_url_returns_as_is() {
         let input = "https://example.com/spaces/abc123";
         assert_eq!(parse_space_id(input), input);
+    }
+
+    #[test]
+    fn test_entry_url() {
+        assert_eq!(
+            parse_entry_id("https://csig.lexiangla.com/pages/entry123?company_from=234"),
+            "entry123"
+        );
     }
 
     #[test]

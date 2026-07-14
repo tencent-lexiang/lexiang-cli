@@ -1,6 +1,8 @@
 use serde_json::Value;
 use tabled::{builder::Builder, settings::Style};
 
+use anyhow::{Context, Result};
+
 /// Fields hidden by default in table/CSV/markdown output to reduce noise.
 const DEFAULT_HIDDEN_FIELDS: &[&str] = &[
     "cover",
@@ -39,6 +41,22 @@ impl FieldFilter {
                 .collect()
         }
     }
+}
+
+/// 使用与动态命令一致的格式输出 MCP 数据。
+pub fn print_output(value: &Value, format: &str, filter: &FieldFilter) -> Result<()> {
+    match format {
+        "json" => println!("{}", value),
+        "table" => print_table(value, filter),
+        "yaml" => {
+            let yaml = serde_yaml::to_string(value).context("Failed to convert result to YAML")?;
+            println!("{}", yaml);
+        }
+        "csv" => print_csv(value, filter),
+        "markdown" => print_markdown(value, filter),
+        _ => println!("{}", serde_json::to_string_pretty(value)?),
+    }
+    Ok(())
 }
 
 pub fn print_table(value: &Value, filter: &FieldFilter) {
@@ -115,7 +133,7 @@ fn print_kv_table(obj: &serde_json::Map<String, Value>, filter: &FieldFilter) {
 
     for key in &keys {
         let val = obj.get(*key).unwrap_or(&Value::Null);
-        builder.push_record(vec![key.to_string(), format_value(val)]);
+        builder.push_record(vec![(*key).to_string(), format_value(val)]);
     }
 
     let mut table = builder.build();

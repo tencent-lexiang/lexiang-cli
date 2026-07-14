@@ -119,7 +119,7 @@ RUST_LOG=trace lx search kb --keyword "test"
 
 ### 参数太复杂？
 
-改用 JSON 传参：`lx block update -d '{"block_id":"xxx", ...}'`
+改用 JSON 传参。页面更新使用 `lx block update -d '{"entry_id":"xxx","command":"...", ...}'`；单块更新使用 `lx block update-block --block-id xxx ...`。
 
 ### 脚本里怎么用最稳妥？
 

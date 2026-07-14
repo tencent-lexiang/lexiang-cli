@@ -1,9 +1,9 @@
 use crate::config::Config;
 use crate::mcp;
 use crate::mcp::schema::{build_tool_args, CommandGenerator, McpSchemaCollection};
-use anyhow::{Context, Result};
+use anyhow::Result;
 
-use super::output::{print_csv, print_markdown, print_table, FieldFilter};
+use super::output::{print_output, FieldFilter};
 
 fn parse_field_list(fields_arg: Option<&String>) -> Option<Vec<String>> {
     fields_arg.map(|s| s.split(',').map(|f| f.trim().to_string()).collect())
@@ -24,7 +24,19 @@ pub async fn handle_dynamic_command(args: &[String], schema: &McpSchemaCollectio
         cmd = cmd.subcommand(ns_cmd);
     }
 
-    let matches = cmd.try_get_matches_from(args)?;
+    let matches = match cmd.try_get_matches_from(args) {
+        Ok(matches) => matches,
+        Err(error)
+            if matches!(
+                error.kind(),
+                clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion
+            ) =>
+        {
+            error.print()?;
+            return Ok(());
+        }
+        Err(error) => return Err(error.into()),
+    };
 
     let (namespace, sub_matches) = matches
         .subcommand()
@@ -61,20 +73,7 @@ pub async fn handle_dynamic_command(args: &[String], schema: &McpSchemaCollectio
     // 用户关心的是 data 内的实际数据，其余为传输元数据。
     let data = result.get("data").unwrap_or(&result);
 
-    match format {
-        "json" => println!("{}", data),
-        "table" => print_table(data, &filter),
-        "yaml" => {
-            let yaml =
-                serde_yaml::to_string(data).context("Failed to convert result to YAML format")?;
-            println!("{}", yaml);
-        }
-        "csv" => print_csv(data, &filter),
-        "markdown" => print_markdown(data, &filter),
-        _ => println!("{}", serde_json::to_string_pretty(data)?),
-    }
-
-    Ok(())
+    print_output(data, format, &filter)
 }
 
 fn find_tool_by_command(
@@ -92,6 +91,22 @@ fn find_tool_by_command(
                 if cmd_name == command {
                     return Ok(tool.name.clone());
                 }
+            }
+        }
+    }
+
+    // 部分高层 smartsheet 工具在服务端 category 中属于 knowledge.block，
+    // 但 CLI 将它们提升为 `lx smartsheet <command>`。
+    if namespace == "smartsheet" {
+        for tool in schema
+            .categories
+            .iter()
+            .flat_map(|category| &category.tools)
+        {
+            if mcp::schema::types::is_promoted_smartsheet_tool(&tool.name)
+                && extract_command_name(&tool.name, namespace) == command
+            {
+                return Ok(tool.name.clone());
             }
         }
     }
@@ -140,7 +155,19 @@ Commands:
         for category in namespaces {
             let namespace = extract_namespace(&category.name);
             let desc = category.description.as_deref().unwrap_or("");
-            let tool_count = category.tool_count;
+            let tool_count = if namespace == "smartsheet" {
+                let mut names: Vec<_> = category.tools.iter().map(|tool| &tool.name).collect();
+                for tool in schema.categories.iter().flat_map(|cat| &cat.tools) {
+                    if mcp::schema::is_promoted_smartsheet_tool(&tool.name)
+                        && !names.contains(&&tool.name)
+                    {
+                        names.push(&tool.name);
+                    }
+                }
+                names.len() as u32
+            } else {
+                category.tool_count
+            };
             println!("  {namespace:14} {desc} ({tool_count} commands)");
         }
     }
@@ -152,4 +179,88 @@ Commands:
 Options:
   -h, --help  Print help"
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn page_commands_resolve_to_page_tools() {
+        let schema = crate::mcp::schema::embedded::load_embedded_collection()
+            .expect("embedded schema should load");
+
+        assert_eq!(
+            find_tool_by_command(&schema, "block", "fetch").unwrap(),
+            "block_fetch_page"
+        );
+        assert_eq!(
+            find_tool_by_command(&schema, "block", "update").unwrap(),
+            "block_update_page"
+        );
+        assert_eq!(
+            find_tool_by_command(&schema, "block", "update-block").unwrap(),
+            "block_update_block"
+        );
+        assert_eq!(
+            find_tool_by_command(&schema, "block", "update-blocks").unwrap(),
+            "block_update_blocks"
+        );
+    }
+
+    #[test]
+    fn smartsheet_commands_resolve_to_expected_tools() {
+        let schema = crate::mcp::schema::embedded::load_embedded_collection()
+            .expect("embedded schema should load");
+        let cases = [
+            ("smartsheet", "create", "smartsheet_create"),
+            ("smartsheet", "fetch", "smartsheet_fetch"),
+            ("smartsheet", "update-schema", "smartsheet_update_schema"),
+            ("block", "smartsheet-create", "smartsheet_create"),
+            ("block", "smartsheet-fetch", "smartsheet_fetch"),
+            ("block", "smartsheet-list", "smartsheet_list"),
+            (
+                "block",
+                "smartsheet-list-records",
+                "smartsheet_list_records",
+            ),
+            (
+                "block",
+                "smartsheet-update-records",
+                "smartsheet_update_records",
+            ),
+            (
+                "block",
+                "smartsheet-update-schema",
+                "smartsheet_update_schema",
+            ),
+            ("block", "smartsheet-update-view", "smartsheet_update_view"),
+            ("smartsheet", "create-field", "smartsheet_create_field"),
+            ("smartsheet", "create-records", "smartsheet_create_records"),
+            ("smartsheet", "create-view", "smartsheet_create_view"),
+            ("smartsheet", "delete-field", "smartsheet_delete_field"),
+            ("smartsheet", "delete-records", "smartsheet_delete_records"),
+            ("smartsheet", "delete-view", "smartsheet_delete_view"),
+            (
+                "smartsheet",
+                "describe-record",
+                "smartsheet_describe_record",
+            ),
+            ("smartsheet", "list-fields", "smartsheet_list_fields"),
+            ("smartsheet", "list-records", "smartsheet_list_records"),
+            ("smartsheet", "list", "smartsheet_list_smartsheets"),
+            ("smartsheet", "list-views", "smartsheet_list_views"),
+            ("smartsheet", "update-field", "smartsheet_update_field"),
+            ("smartsheet", "update-records", "smartsheet_update_records"),
+            ("smartsheet", "update-view", "smartsheet_update_view"),
+        ];
+
+        for (namespace, command, expected_tool) in cases {
+            assert_eq!(
+                find_tool_by_command(&schema, namespace, command).unwrap(),
+                expected_tool,
+                "unexpected tool mapping for {namespace} {command}"
+            );
+        }
+    }
 }

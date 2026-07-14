@@ -163,8 +163,10 @@ fn matches_find_pattern(name: &str, pattern: &str) -> bool {
         return name.ends_with(&format!(".{ext}"));
     }
 
-    if pattern.starts_with('*') && pattern.ends_with('*') {
-        let inner = &pattern[1..pattern.len() - 1];
+    if let Some(inner) = pattern
+        .strip_prefix('*')
+        .and_then(|value| value.strip_suffix('*'))
+    {
         return name.contains(inner);
     }
 

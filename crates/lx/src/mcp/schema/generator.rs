@@ -1,6 +1,6 @@
 use crate::mcp::schema::types::{
-    extract_command_name, extract_namespace, get_tool_extra_aliases, to_kebab_case, McpCategory,
-    McpPropertySchema, McpSchemaCollection, McpToolSchema,
+    extract_command_name, extract_namespace, get_tool_extra_aliases, is_promoted_smartsheet_tool,
+    to_kebab_case, McpCategory, McpPropertySchema, McpSchemaCollection, McpToolSchema,
 };
 use clap::{Arg, ArgAction, Command};
 
@@ -8,6 +8,52 @@ use clap::{Arg, ArgAction, Command};
 /// 注意：这会产生内存泄漏，但对于 CLI 应用来说是可接受的
 fn leak_string(s: String) -> &'static str {
     Box::leak(s.into_boxed_str())
+}
+
+fn is_uri_char(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || "-._~:/?#[]@!$&'()*+,;=%".contains(ch)
+}
+
+fn extract_resource_uris(description: &str) -> Vec<String> {
+    let mut uris = Vec::new();
+
+    for (start, _) in description.match_indices("lexiang://") {
+        let Some(tail) = description.get(start..) else {
+            continue;
+        };
+        let candidate: String = tail.chars().take_while(|ch| is_uri_char(*ch)).collect();
+        let uri = candidate.trim_end_matches(&['.', ',', ';', '\'', ')', ']'][..]);
+        if url::Url::parse(uri).is_ok() && !uris.iter().any(|existing| existing == uri) {
+            uris.push(uri.to_string());
+        }
+    }
+
+    uris
+}
+
+fn resource_preflight(tool_name: &str, description: &str) -> Option<String> {
+    let mut uris = extract_resource_uris(description);
+
+    // Transitional fallback: the current server resource contains the smart-sheet
+    // DDL, record, and view contracts, but its smartsheet tool descriptions do not
+    // yet advertise the URI as block_update_page already does.
+    if tool_name.starts_with("smartsheet_") && uris.is_empty() {
+        uris.push("lexiang://docs/block-view-dsl/v0".to_string());
+    }
+
+    if uris.is_empty() {
+        return None;
+    }
+
+    let mut guidance = String::from(
+        "Resource preflight (read the server-owned DSL before building arguments):\n  \
+         lx mcp resource list --format json",
+    );
+    for uri in uris {
+        guidance.push_str("\n  lx mcp resource read ");
+        guidance.push_str(&uri);
+    }
+    Some(guidance)
 }
 
 /// 动态命令生成器
@@ -41,8 +87,22 @@ impl<'a> CommandGenerator<'a> {
             .about(leak_string(description))
             .subcommand_required(true);
 
+        let mut tools: Vec<_> = category.tools.iter().collect();
+
+        // 服务端把部分高层 smartsheet tool 归在 knowledge.block；CLI 在
+        // smartsheet namespace 中补齐它们，并按 tool name 去重。
+        if namespace == "smartsheet" {
+            for tool in self.schema.categories.iter().flat_map(|cat| &cat.tools) {
+                if is_promoted_smartsheet_tool(&tool.name)
+                    && !tools.iter().any(|existing| existing.name == tool.name)
+                {
+                    tools.push(tool);
+                }
+            }
+        }
+
         // 添加该 namespace 下的所有命令
-        for tool in &category.tools {
+        for tool in tools {
             let tool_cmd = self.generate_tool_command(tool, &namespace);
             cmd = cmd.subcommand(tool_cmd);
         }
@@ -63,7 +123,10 @@ impl<'a> CommandGenerator<'a> {
             .unwrap_or_else(|| format!("Execute {}", tool.name));
 
         let mut cmd =
-            Command::new(leak_string(command_name.clone())).about(leak_string(description));
+            Command::new(leak_string(command_name.clone())).about(leak_string(description.clone()));
+        if let Some(preflight) = resource_preflight(&tool.name, &description) {
+            cmd = cmd.long_about(leak_string(format!("{description}\n\n{preflight}")));
+        }
 
         // 存储原始 tool name 作为 alias，方便用原始名称调用
         // 避免与 command name 重复导致 clap panic（如 whoami）
@@ -73,7 +136,7 @@ impl<'a> CommandGenerator<'a> {
 
         // 注册额外 alias（如 space recent 也可以用 space frequent 调用）
         for extra_alias in get_tool_extra_aliases(&tool.name) {
-            cmd = cmd.alias(leak_string(extra_alias.to_string()));
+            cmd = cmd.alias(leak_string((*extra_alias).to_string()));
         }
 
         cmd = cmd
@@ -140,8 +203,12 @@ impl<'a> CommandGenerator<'a> {
 
         let mut arg = Arg::new(leak_string(name.to_string()))
             .long(leak_string(arg_name))
-            .required(is_required)
             .value_name(leak_string(name.to_uppercase()));
+
+        // `-d/--data-raw` 一次性携带全部字段，此时不再要求逐项 flag。
+        if is_required {
+            arg = arg.required_unless_present("data_raw");
+        }
 
         // 设置帮助文本
         if let Some(ref desc) = prop.description {
@@ -309,5 +376,172 @@ mod tests {
 
         assert_eq!(namespaces.len(), 1);
         assert_eq!(namespaces[0].get_name(), "team");
+    }
+
+    #[test]
+    fn extracts_resource_uris_without_sentence_punctuation() {
+        assert_eq!(
+            extract_resource_uris(
+                "完整 DSL 见 resource: lexiang://docs/block-mdx/v0。另见 `lexiang://docs/instructions/v1`。"
+            ),
+            vec![
+                "lexiang://docs/block-mdx/v0".to_string(),
+                "lexiang://docs/instructions/v1".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn generated_help_prompts_agents_to_read_related_resources() {
+        let mut schema = McpSchemaCollection::new();
+        schema.categories.push(McpCategory {
+            name: "knowledge.block".to_string(),
+            description: Some("Block operations".to_string()),
+            tool_count: 1,
+            tools: vec![crate::mcp::schema::types::McpCategoryTool {
+                name: "block_update_page".to_string(),
+                description: Some(
+                    "Update MDX; resource: lexiang://docs/block-mdx/v0。".to_string(),
+                ),
+            }],
+        });
+
+        let generator = CommandGenerator::new(&schema);
+        let mut block = generator
+            .generate_namespaces()
+            .into_iter()
+            .find(|command| command.get_name() == "block")
+            .unwrap();
+        let help = block
+            .find_subcommand_mut("update")
+            .unwrap()
+            .render_long_help()
+            .to_string();
+
+        assert!(help.contains("Resource preflight"));
+        assert!(help.contains("lx mcp resource list --format json"));
+        assert!(help.contains("lx mcp resource read lexiang://docs/block-mdx/v0"));
+    }
+
+    #[test]
+    fn smartsheet_help_uses_resource_fallback_until_server_advertises_it() {
+        let mut schema = McpSchemaCollection::new();
+        schema.categories.push(McpCategory {
+            name: "knowledge.smartsheet".to_string(),
+            description: Some("Smartsheet operations".to_string()),
+            tool_count: 1,
+            tools: vec![crate::mcp::schema::types::McpCategoryTool {
+                name: "smartsheet_update_schema".to_string(),
+                description: Some("Update schema with ALTER TABLE DDL".to_string()),
+            }],
+        });
+
+        let generator = CommandGenerator::new(&schema);
+        let mut smartsheet = generator
+            .generate_namespaces()
+            .into_iter()
+            .find(|command| command.get_name() == "smartsheet")
+            .unwrap();
+        let help = smartsheet
+            .find_subcommand_mut("update-schema")
+            .unwrap()
+            .render_long_help()
+            .to_string();
+
+        assert!(help.contains("lx mcp resource read lexiang://docs/block-view-dsl/v0"));
+    }
+
+    #[test]
+    fn embedded_schema_generates_valid_clap_commands() {
+        let schema = crate::mcp::schema::embedded::load_embedded_collection()
+            .expect("embedded schema should load");
+        let generator = CommandGenerator::new(&schema);
+
+        for command in generator.generate_namespaces() {
+            command.debug_assert();
+        }
+    }
+
+    #[test]
+    fn data_raw_satisfies_schema_required_arguments() {
+        let schema = crate::mcp::schema::embedded::load_embedded_collection()
+            .expect("embedded schema should load");
+        let generator = CommandGenerator::new(&schema);
+        let block = generator
+            .generate_namespaces()
+            .into_iter()
+            .find(|command| command.get_name() == "block")
+            .expect("block namespace should exist");
+
+        block
+            .try_get_matches_from([
+                "block",
+                "update",
+                "-d",
+                r#"{"entry_id":"entry-id","command":"replace_content","new_str":"text"}"#,
+            ])
+            .expect("data-raw should satisfy the required command argument");
+    }
+
+    #[test]
+    fn page_and_smartsheet_capabilities_generate_and_accept_json() {
+        let schema = crate::mcp::schema::embedded::load_embedded_collection()
+            .expect("embedded schema should load");
+
+        let cases: &[(&str, &[&str])] = &[
+            (
+                "block",
+                &[
+                    "fetch",
+                    "update",
+                    "smartsheet-create",
+                    "smartsheet-fetch",
+                    "smartsheet-list",
+                    "smartsheet-list-records",
+                    "smartsheet-update-records",
+                    "smartsheet-update-schema",
+                    "smartsheet-update-view",
+                ],
+            ),
+            (
+                "smartsheet",
+                &[
+                    "create",
+                    "fetch",
+                    "update-schema",
+                    "create-field",
+                    "create-records",
+                    "create-view",
+                    "delete-field",
+                    "delete-records",
+                    "delete-view",
+                    "describe-record",
+                    "list-fields",
+                    "list-records",
+                    "list",
+                    "list-views",
+                    "update-field",
+                    "update-records",
+                    "update-view",
+                ],
+            ),
+        ];
+
+        for (namespace, commands) in cases {
+            for command in *commands {
+                let generator = CommandGenerator::new(&schema);
+                let namespace_command = generator
+                    .generate_namespaces()
+                    .into_iter()
+                    .find(|candidate| candidate.get_name() == *namespace)
+                    .unwrap_or_else(|| panic!("{namespace} namespace should exist"));
+
+                namespace_command
+                    .try_get_matches_from([*namespace, *command, "-d", "{}"])
+                    .unwrap_or_else(|error| {
+                        panic!("{namespace} {command} should accept JSON input: {error}")
+                    });
+            }
+        }
     }
 }

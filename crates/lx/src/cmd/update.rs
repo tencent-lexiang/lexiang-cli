@@ -54,11 +54,7 @@ pub async fn handle_list(limit: usize) -> Result<()> {
         if let Some(ref notes) = release.release_notes {
             // 只显示第一行摘要
             if let Some(first_line) = notes.lines().next() {
-                let summary = if first_line.len() > 60 {
-                    format!("{}...", &first_line[..60])
-                } else {
-                    first_line.to_string()
-                };
+                let summary = summarize_release_note(first_line);
                 if !summary.trim().is_empty() {
                     println!("   {}", summary);
                 }
@@ -68,6 +64,10 @@ pub async fn handle_list(limit: usize) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn summarize_release_note(first_line: &str) -> String {
+    console::truncate_str(first_line, 60, "...").into_owned()
 }
 
 /// 自动检查更新（静默模式，仅在有更新时输出）
@@ -141,5 +141,18 @@ fn print_check_result(result: &CheckResult) {
         }
     } else {
         println!("\x1b[32m✓ 已是最新版本\x1b[0m");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::summarize_release_note;
+
+    #[test]
+    fn release_note_summary_handles_multibyte_text() {
+        let summary = summarize_release_note(&"版本说明".repeat(20));
+
+        assert!(console::measure_text_width(&summary) <= 60);
+        assert!(summary.ends_with("..."));
     }
 }

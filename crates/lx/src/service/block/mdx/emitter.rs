@@ -226,7 +226,7 @@ impl Emitter {
                 first = false;
                 // Collect text content recursively into buffer
                 let mut buf = String::new();
-                self.collect_inline_to_buf(child, &mut buf);
+                Self::collect_inline_to_buf(child, &mut buf);
                 self.push(&buf);
             }
         } else if !node.children.is_empty() {
@@ -566,14 +566,8 @@ impl Emitter {
         }
     }
 
-    fn collect_inline_lines<'a>(&'a mut self, node: &'a Node) -> Vec<String> {
-        let mut buf = String::new();
-        self.collect_inline_recursive(node, &mut buf);
-        vec![buf]
-    }
-
     /// Collect inline text content into buffer for quote rendering
-    fn collect_inline_to_buf(&mut self, node: &Node, buf: &mut String) {
+    fn collect_inline_to_buf(node: &Node, buf: &mut String) {
         match &node.node_type {
             NodeType::Text => {
                 buf.push_str(node.text.as_deref().unwrap_or(""));
@@ -588,28 +582,7 @@ impl Emitter {
             }
             _ => {
                 for child in &node.children {
-                    self.collect_inline_to_buf(child, buf);
-                }
-            }
-        }
-    }
-
-    fn collect_inline_recursive(&mut self, node: &Node, buf: &mut String) {
-        match &node.node_type {
-            NodeType::Text => {
-                buf.push_str(node.text.as_deref().unwrap_or(""));
-            }
-            NodeType::Link { href } => {
-                let text = node
-                    .children
-                    .iter()
-                    .map(super::super::ir::Node::plain_content)
-                    .collect::<String>();
-                buf.push_str(&format!("[{text}]({href})"));
-            }
-            _ => {
-                for child in &node.children {
-                    self.collect_inline_recursive(child, buf);
+                    Self::collect_inline_to_buf(child, buf);
                 }
             }
         }

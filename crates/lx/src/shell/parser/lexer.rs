@@ -39,16 +39,14 @@ pub enum Token {
 }
 
 /// 词法分析器
-pub struct Lexer<'a> {
-    input: &'a str,
+pub struct Lexer {
     chars: Vec<char>,
     pos: usize,
 }
 
-impl<'a> Lexer<'a> {
-    pub fn new(input: &'a str) -> Self {
+impl Lexer {
+    pub fn new(input: &str) -> Self {
         Self {
-            input,
             chars: input.chars().collect(),
             pos: 0,
         }
@@ -185,9 +183,8 @@ impl<'a> Lexer<'a> {
         }
 
         if self.pos >= self.chars.len() {
-            return Err(LexError::UnterminatedString(
-                self.input[start..].to_string(),
-            ));
+            let content = self.chars[start..].iter().collect();
+            return Err(LexError::UnterminatedString(content));
         }
 
         let content: String = self.chars[start..self.pos].iter().collect();
@@ -253,9 +250,8 @@ impl<'a> Lexer<'a> {
                 self.pos += 1;
             }
             if self.pos >= self.chars.len() {
-                return Err(LexError::UnterminatedVariable(
-                    self.input[start..].to_string(),
-                ));
+                let name = self.chars[start..].iter().collect();
+                return Err(LexError::UnterminatedVariable(name));
             }
             let name: String = self.chars[start..self.pos].iter().collect();
             self.pos += 1; // skip }
@@ -513,5 +509,25 @@ mod tests {
     fn test_whitespace_only() {
         let tokens = lex("   \t  ");
         assert!(tokens.is_empty());
+    }
+
+    #[test]
+    fn test_unterminated_string_after_multibyte_text() {
+        let error = Lexer::new("echo 文档 '未闭合").tokenize().unwrap_err();
+
+        assert!(matches!(
+            error,
+            LexError::UnterminatedString(content) if content == "未闭合"
+        ));
+    }
+
+    #[test]
+    fn test_unterminated_variable_after_multibyte_text() {
+        let error = Lexer::new("echo 文档 ${变量").tokenize().unwrap_err();
+
+        assert!(matches!(
+            error,
+            LexError::UnterminatedVariable(name) if name == "变量"
+        ));
     }
 }

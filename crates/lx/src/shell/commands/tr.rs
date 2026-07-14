@@ -97,7 +97,7 @@ fn parse_tr_args(args: &[String]) -> std::result::Result<TrOptions, String> {
 
     for arg in args {
         if arg.starts_with('-') && arg.len() > 1 && !arg.starts_with("--") {
-            for ch in arg[1..].chars() {
+            for ch in arg.strip_prefix('-').unwrap_or(arg).chars() {
                 match ch {
                     'd' => opts.delete = true,
                     's' => opts.squeeze = true,
@@ -130,24 +130,28 @@ fn parse_tr_args(args: &[String]) -> std::result::Result<TrOptions, String> {
 fn expand_set(set: &str) -> Vec<char> {
     let mut chars = Vec::new();
     let set = unescape(set);
-    let bytes: Vec<char> = set.chars().collect();
+    let set_chars: Vec<char> = set.chars().collect();
     let mut i = 0;
 
-    while i < bytes.len() {
+    while i < set_chars.len() {
         // POSIX 字符类
-        if i + 1 < bytes.len() && bytes[i] == '[' && bytes[i + 1] == ':' {
-            if let Some(end) = set[i..].find(":]") {
-                let class = &set[i + 2..i + end];
-                chars.extend(expand_posix_class(class));
-                i += end + 2;
+        if i + 1 < set_chars.len() && set_chars[i] == '[' && set_chars[i + 1] == ':' {
+            if let Some(end_offset) = set_chars[i + 2..]
+                .windows(2)
+                .position(|window| window == [':', ']'])
+            {
+                let end = i + 2 + end_offset;
+                let class: String = set_chars[i + 2..end].iter().collect();
+                chars.extend(expand_posix_class(&class));
+                i = end + 2;
                 continue;
             }
         }
 
         // 范围: a-z
-        if i + 2 < bytes.len() && bytes[i + 1] == '-' {
-            let start = bytes[i];
-            let end = bytes[i + 2];
+        if i + 2 < set_chars.len() && set_chars[i + 1] == '-' {
+            let start = set_chars[i];
+            let end = set_chars[i + 2];
             if start <= end {
                 for c in start..=end {
                     chars.push(c);
@@ -157,7 +161,7 @@ fn expand_set(set: &str) -> Vec<char> {
             }
         }
 
-        chars.push(bytes[i]);
+        chars.push(set_chars[i]);
         i += 1;
     }
 
@@ -245,3 +249,17 @@ fn squeeze(input: &str, set: &[char], complement: bool) -> String {
 
 // ─── 命令注册 ────────────────────────────────────────────
 submit_command!(TrCommand);
+
+#[cfg(test)]
+mod tests {
+    use super::expand_set;
+
+    #[test]
+    fn expands_posix_class_after_multibyte_character() {
+        let expanded = expand_set("文[:digit:]");
+
+        assert_eq!(expanded.first(), Some(&'文'));
+        assert!(expanded.contains(&'0'));
+        assert!(expanded.contains(&'9'));
+    }
+}

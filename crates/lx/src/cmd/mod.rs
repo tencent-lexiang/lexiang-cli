@@ -2,6 +2,7 @@ pub mod block;
 pub mod cli;
 pub mod dynamic;
 pub mod git;
+pub mod local_file;
 pub mod mcp;
 pub mod output;
 pub mod sh;
@@ -12,10 +13,13 @@ pub mod update;
 pub mod utils;
 
 pub use block::try_handle_block_command;
-pub use cli::{Cli, Commands, McpCommands, SkillCommands, ToolsCommands, UpdateCommands};
+pub use cli::{
+    Cli, Commands, McpCommands, McpResourceCommands, SkillCommands, ToolsCommands, UpdateCommands,
+};
 pub use dynamic::{handle_dynamic_command, print_help_with_dynamic_commands};
 pub use git::handle_git_command;
-pub use mcp::{call_tool, list_tools};
+pub use local_file::try_handle_local_file_command;
+pub use mcp::{call_tool, list_resources, list_tools, read_resource};
 #[allow(unused_imports)]
 pub use sh::{build_shell, exec_command, start_repl};
 pub use skill::{handle_generate, handle_install, handle_status, handle_uninstall, handle_update};

@@ -35,6 +35,7 @@ docs/
 
 skills/                        🤖 Agent 技能文件（lx skill generate 自动生成）
 ├── lx-block/SKILL.md          # block 操作
+├── lx-smartsheet/SKILL.md     # 智能表格操作
 ├── lx-entry/SKILL.md          # 条目操作
 ├── lx-search/SKILL.md         # 搜索
 └── ...

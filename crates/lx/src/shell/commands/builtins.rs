@@ -84,7 +84,7 @@ impl Command for CdCommand {
                 if dir == "~" {
                     home
                 } else {
-                    format!("{}{}", home, &dir[1..])
+                    format!("{}{}", home, dir.strip_prefix('~').unwrap_or(dir))
                 }
             } else {
                 fs::join_path(ctx.cwd, dir)
@@ -141,7 +141,7 @@ impl Command for SortCommand {
 
         for arg in args {
             if arg.starts_with('-') && !arg.starts_with("--") {
-                for ch in arg[1..].chars() {
+                for ch in arg.strip_prefix('-').unwrap_or(arg).chars() {
                     match ch {
                         'r' => reverse = true,
                         'n' => numeric = true,

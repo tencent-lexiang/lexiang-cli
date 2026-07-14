@@ -11,6 +11,7 @@ lexiang-cli/
 │   ├── cmd/                 # CLI 命令层（用户交互入口）
 │   │   ├── cli.rs           # Clap 命令定义
 │   │   ├── block/           # Block 静态子命令
+│   │   ├── local_file.rs    # 本地文件上传/内容导入增强命令
 │   │   ├── dynamic/         # 动态 MCP 命令（schema 驱动）
 │   │   ├── tools/           # Schema 管理命令
 │   │   ├── mcp/             # MCP 通用操作
@@ -53,7 +54,7 @@ lexiang-cli/
     └── plans/               # 设计文档（RFC/ADR）
 ```
 
-## 三层命令架构
+## 四层命令架构
 
 ```text
 ┌─────────────────────────────────────┐
@@ -63,7 +64,10 @@ lexiang-cli/
 │  Layer 2: 静态 Block 子命令         │
 │  lx block ls / get / create / ...   │  ← 优先级高于 Layer 3
 ├─────────────────────────────────────┤
-│  Layer 3: 动态 MCP 命令             │
+│  Layer 3: 本地文件增强子命令         │
+│  lx file upload / entry import ...   │  ← 只认领两个本地命令族
+├─────────────────────────────────────┤
+│  Layer 4: 动态 MCP 命令             │
 │  lx team list / space describe / .. │  ← 从 schema 自动生成
 └─────────────────────────────────────┘
 ```
@@ -71,8 +75,23 @@ lexiang-cli/
 分发逻辑在 `main.rs`：
 
 1. `lx block <subcmd>` → `cmd/block/mod.rs`（静态，优先）
-2. `lx <namespace> <tool>` → `cmd/dynamic/mod.rs`（动态 MCP）
-3. `lx <clap 子命令>` → `Cli::parse()` → 各 cmd 模块
+2. `lx file upload` / `lx entry import <format>` → `cmd/local_file.rs`
+3. `lx <namespace> <tool>` → `cmd/dynamic/mod.rs`（动态 MCP）
+4. `lx <clap 子命令>` → `Cli::parse()` → 各 cmd 模块
+
+## MCP Resource 与 DSL
+
+服务端通过 MCP Resource 发布版本化 DSL，CLI 只提供发现和读取，不复制或解析正文：
+
+```bash
+lx mcp resource list --format json
+lx mcp resource read <lexiang://...>
+```
+
+`McpClient::list_resources()` 负责跟随 `nextCursor` 聚合结果，
+`McpClient::read_resource()` 保留 text/blob 和 MIME 元数据。动态命令生成器会从 Tool
+description 中提取 `lexiang://` URI 并写入长帮助；如果新工具依赖 Resource，服务端的
+Tool description 应显式声明该 URI。
 
 ## Schema 四层合并
 

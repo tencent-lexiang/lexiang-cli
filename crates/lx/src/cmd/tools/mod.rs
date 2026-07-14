@@ -132,6 +132,14 @@ pub async fn handle_sync_embedded(config: &Config) -> Result<()> {
 
     let mut schema = McpSchemaCollection::from_categories(categories_result.categories);
 
+    // tools/list 通常包含完整 outputSchema；get_tool_schema 在部分网关版本中只返回 inputSchema。
+    // 两者合并可保留上传会话等返回结构，同时继续覆盖更完整的参数描述。
+    let listed_tools = client.list_tools().await?;
+    let listed_tools: std::collections::HashMap<_, _> = listed_tools
+        .into_iter()
+        .map(|tool| (tool.name.clone(), tool))
+        .collect();
+
     // 2b. 对每个 tool 调用 get_tool_schema 获取完整的 input/output schema
     let tool_names: Vec<String> = schema.tools.keys().cloned().collect();
     let total = tool_names.len();
@@ -157,8 +165,15 @@ pub async fn handle_sync_embedded(config: &Config) -> Result<()> {
                     tool_name, &response,
                 );
                 if let Some(existing) = schema.tools.get_mut(tool_name.as_str()) {
-                    existing.input_schema = full.input_schema;
-                    existing.output_schema = full.output_schema;
+                    let listed = listed_tools
+                        .get(tool_name)
+                        .map(crate::mcp::schema::types::McpToolSchema::from_protocol);
+                    existing.input_schema = full
+                        .input_schema
+                        .or_else(|| listed.as_ref().and_then(|tool| tool.input_schema.clone()));
+                    existing.output_schema = full
+                        .output_schema
+                        .or_else(|| listed.and_then(|tool| tool.output_schema));
                     // 用 get_tool_schema 返回的 description（更完整）覆盖 category 里的
                     if full.description.is_some() {
                         existing.description = full.description;

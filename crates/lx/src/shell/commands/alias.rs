@@ -236,11 +236,11 @@ impl AliasTranslator for RipgrepTranslator {
                 _ if arg.starts_with("-C") && arg.len() > 2 => {
                     // -C3 形式
                     grep_args.push("-C".to_string());
-                    grep_args.push(arg[2..].to_string());
+                    grep_args.push(arg.strip_prefix("-C").unwrap_or_default().to_string());
                 }
                 _ if arg.starts_with("-t") && arg.len() > 2 => {
                     // -tmd 形式
-                    let type_name = &arg[2..];
+                    let type_name = arg.strip_prefix("-t").unwrap_or_default();
                     let ext = rg_type_to_glob(type_name);
                     grep_args.push(format!("--include={ext}"));
                 }
@@ -248,7 +248,7 @@ impl AliasTranslator for RipgrepTranslator {
                 // 位置参数
                 _ if arg.starts_with('-') => {
                     // 其他未知 flag，尝试拆解短选项组合
-                    for ch in arg[1..].chars() {
+                    for ch in arg.strip_prefix('-').unwrap_or(arg).chars() {
                         match ch {
                             'i' => grep_flags.push('i'),
                             'l' => grep_flags.push('l'),
@@ -392,7 +392,7 @@ impl AliasTranslator for EzaTranslator {
                 }
                 _ if arg.starts_with('-') => {
                     // 短选项组合
-                    for ch in arg[1..].chars() {
+                    for ch in arg.strip_prefix('-').unwrap_or(arg).chars() {
                         match ch {
                             'l' => ls_flags.push('l'),
                             'a' | 'A' => ls_flags.push('a'),

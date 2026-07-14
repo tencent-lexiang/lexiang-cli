@@ -192,7 +192,7 @@ fn parse_ls_args(args: &[String]) -> LsOptions {
 
     for arg in args {
         if arg.starts_with('-') && !arg.starts_with("--") {
-            for ch in arg[1..].chars() {
+            for ch in arg.strip_prefix('-').unwrap_or(arg).chars() {
                 match ch {
                     'l' => opts.long = true,
                     'a' => opts.all = true,
@@ -251,12 +251,14 @@ fn format_inode(entry: &DirEntry) -> String {
     if let Some(ref meta) = entry.metadata {
         if let Some(ref id) = meta.entry_id {
             // 取 entry_id 末尾 8 位做短 inode
-            let short = if id.len() > 8 {
-                &id[id.len() - 8..]
-            } else {
-                id
-            };
-            return short.to_string();
+            return id
+                .chars()
+                .rev()
+                .take(8)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect();
         }
     }
     "0".to_string()

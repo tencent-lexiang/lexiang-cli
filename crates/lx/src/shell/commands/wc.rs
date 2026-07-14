@@ -90,7 +90,7 @@ fn parse_wc_args(args: &[String]) -> WcOptions {
 
     for arg in args {
         if arg.starts_with('-') && !arg.starts_with("--") {
-            for ch in arg[1..].chars() {
+            for ch in arg.strip_prefix('-').unwrap_or(arg).chars() {
                 match ch {
                     'l' => opts.lines_only = true,
                     'w' => opts.words_only = true,

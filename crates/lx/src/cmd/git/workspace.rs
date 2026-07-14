@@ -7,9 +7,9 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use super::{
-    create_page_with_content, extract_root_entry_id, extract_space_name, find_worktree_path,
-    pull_entries_recursive, pull_page_content, push_page_content, truncate_path,
-    update_file_content, upload_new_file,
+    abbreviate_id, create_page_with_content, extract_root_entry_id, extract_space_name,
+    find_worktree_path, pull_entries_recursive, pull_page_content, push_page_content,
+    truncate_path, update_file_content, upload_new_file,
 };
 use crate::cmd::cli::WorktreeCommands;
 
@@ -408,7 +408,7 @@ fn handle_commit(message: &str, all: bool) -> Result<()> {
         repo.add_and_commit(message)?
     };
 
-    ui::print_committed(&commit_id[..8]);
+    ui::print_committed(&abbreviate_id(&commit_id, 8));
 
     Ok(())
 }
@@ -420,7 +420,7 @@ fn handle_log(limit: usize) -> Result<()> {
 
     for commit in commits {
         ui::print_log_entry(
-            &commit.hash[..8],
+            &abbreviate_id(&commit.hash, 8),
             &commit.message,
             &commit.author,
             &commit.date,
@@ -497,7 +497,7 @@ async fn handle_pull(config: &Config) -> Result<()> {
         );
         let commit_id = repo.add_and_commit(&commit_message)?;
         sp.finish_and_clear();
-        ui::print_committed(&commit_id[..8]);
+        ui::print_committed(&abbreviate_id(&commit_id, 8));
     } else {
         sp.finish_and_clear();
     }

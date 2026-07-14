@@ -492,8 +492,7 @@ impl LexiangFs {
         }
 
         // 如果路径以 .md 结尾，尝试去掉扩展名
-        if normalized.ends_with(".md") {
-            let without_ext = &normalized[..normalized.len() - 3];
+        if let Some(without_ext) = normalized.strip_suffix(".md") {
             if let Ok(entry) = self
                 .resolver
                 .resolve_path(without_ext, self.mcp.as_ref())

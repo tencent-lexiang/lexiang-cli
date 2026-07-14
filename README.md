@@ -172,23 +172,31 @@ lx sh --space <SPACE_ID> -e "tree -L 2 /kb"
 
 CLI 自动从 MCP Schema 生成命令，新功能上线后只需 `lx tools sync` 即可同步。
 
-| 命名空间  | 说明         | 命令数 |
-|-----------|--------------|--------|
-| `team`    | 团队接口     | 3      |
-| `space`   | 知识库接口   | 3      |
-| `entry`   | 知识增删改查 | 10     |
-| `block`   | 在线文档     | 10     |
-| `file`    | 知识文件     | 5      |
-| `search`  | 搜索         | 2      |
-| `ppt`     | PPT 服务     | 6      |
-| `meeting` | 腾讯会议     | 5      |
-| `comment` | 知识评论     | 2      |
-| `contact` | 联系人       | 2      |
-| `iwiki`   | iWiki        | 1      |
+| 命名空间       | 说明                 | 命令数 |
+|----------------|----------------------|--------|
+| `team`         | 团队接口             | 3      |
+| `space`        | 知识库接口           | 4      |
+| `entry`        | 知识增删改查         | 12     |
+| `block`        | 页面、文档块与高层表格 | 21     |
+| `smartsheet`   | 智能表格统一操作     | 17     |
+| `file`         | 知识文件             | 7      |
+| `search`       | 搜索                 | 2      |
+| `draft`        | Markdown 草稿        | 4      |
+| `faq`          | FAQ                  | 5      |
+| `tag`          | 标签                 | 2      |
+| `ppt`          | PPT 服务             | 2      |
+| `meeting`      | 腾讯会议             | 5      |
+| `comment`      | 知识评论             | 2      |
+| `contact`      | 联系人               | 2      |
+| `iwiki`        | iWiki                | 1      |
 
 工具管理命令：`lx tools sync`、`lx tools categories`、`lx tools list --category <name>`、`lx tools skill`
 
 所有命令都有帮助信息：`lx <namespace> <command> --help`
+
+涉及服务端 DSL 的命令会在帮助中显示 Resource preflight。Agent 应先运行
+`lx mcp resource list --format json`，再用 `lx mcp resource read <URI>` 读取当前协议，
+不要根据 CLI 内置示例猜测 MDX、智能表格 DDL 或视图语法。
 
 ## 🎨 Shell 补全
 

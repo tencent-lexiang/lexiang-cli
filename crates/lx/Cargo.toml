@@ -55,8 +55,11 @@ gix = { version = "0.83", default-features = false, features = [
     "sha1",
 ] }
 walkdir = "2"
+zip = { version = "8.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+tempfile = "3"
 indicatif = "0.17"
 console = "0.15"
+unicode-truncate = "2"
 async-trait = "0.1"
 async-recursion = "1"
 inventory = "0.3"
@@ -74,7 +77,6 @@ anyhow = "1"
 
 [dev-dependencies]
 cargo-husky = { version = "1.5.0", default-features = false, features = ["user-hooks"] }
-tempfile = "3"
 
 [lints]
 workspace = true

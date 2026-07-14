@@ -2,119 +2,103 @@
 
 > **前置条件：** 先阅读 [`../SKILL.md`](../SKILL.md) 了解条目管理的整体决策树。
 
-知识库中的文件管理：上传新文件、更新已有文件、下载、版本控制、从 URL 注册文件、导入外部链接。核心操作是**三步文件上传**——这个流程不可跳步。
+`lx file upload` 会自动完成 MCP apply、HTTP PUT 和 MCP commit，支持普通文件、图片、单 HTML、HTML bundle、视频和音频。
 
-## 使用场景
-
-### 上传新文件到知识库（完整 3 步）
-
-#### Step 1 — 申请上传凭证
+## 上传新文件
 
 ```bash
-lx file apply-upload \
-  --parent-entry-id folder_xxx \
-  --name "report.pdf" \
-  --upload-type PRE_SIGNED_URL
-# → 返回 session.upload_url 和 session.session_id
+lx file upload ./report.pdf --parent-entry-id folder_xxx
+lx file upload ./demo.mp4 --parent-entry-id folder_xxx
+lx file upload ./voice.mp3 --parent-entry-id folder_xxx
 ```
 
-#### Step 2 — HTTP PUT 上传文件（非 lx 命令，直接执行）
+CLI 自动读取文件名、大小、MIME 和语义扩展。视频/音频仍走相同公共命令，存储后端由服务端选择。
+
+## HTML 的四种输入方式
 
 ```bash
-curl -X PUT "{upload_url}" --data-binary @/path/to/report.pdf
+# 1. 导入为可编辑在线页面
+lx entry import html ./index.html --parent-id folder_xxx
+
+# 2. HTML 物料目录自动压缩并上传为 bundle
+lx entry import html ./site --dir --parent-id folder_xxx
+
+# 3. 上传单 HTML 文件条目
+lx file upload ./index.html --parent-entry-id folder_xxx
+
+# 4. 上传预制 HTML bundle；ZIP 根应包含 index.html
+lx file upload ./site.zip --parent-entry-id folder_xxx --html-bundle
 ```
 
-#### Step 3 — 确认上传完成
+目录模式递归包含普通文件，不额外包一层目录；拒绝符号链接，并要求目录根存在 `index.html`。默认远端文件名为 `<目录名>.zip`，可用 `--name` 覆盖。
+
+普通 ZIP 不加 `--html-bundle`：
 
 ```bash
-lx file commit-upload --session-id sess_xxx
-# → 文件条目正式创建，返回 entry 对象
+lx file upload ./archive.zip --parent-entry-id folder_xxx
 ```
 
-### 更新已有文件（重新上传）
+HTML 单文件和 bundle 受服务端 10 MiB 上限约束。
+
+## 更新已有文件
 
 ```bash
-# 先获取 file_id（target_id 就是 file_id）
+# target_id 即 file_id
 lx entry describe-entry --entry-id file_entry_xxx
 
-# 再申请上传（注意参数差异）
-lx file apply-upload \
+lx file upload ./report-v2.pdf \
   --parent-entry-id file_entry_xxx \
-  --name "report_v2.pdf" \
-  --upload-type PRE_SIGNED_URL \
   --file-id file_xxx
-# → 后续同上：PUT + commit
 ```
 
-> ⚠️ 更新文件时 `--parent-entry-id` 填的是**文件条目自己的 entry_id**，不是父文件夹——这是最常见的错误。
+更新时 `--parent-entry-id` 必须是当前文件条目自己的 entry ID，不是父文件夹。
 
-### 文件已在 COS 上，直接注册
+## 高级覆盖
+
+只有自动推断不正确时才显式覆盖：
 
 ```bash
-lx file save-file \
+lx file upload ./artifact.bin \
   --parent-entry-id folder_xxx \
-  --name "数据分析.xlsx" \
-  --url "https://cos.xxx/data.xlsx"
+  --name artifact.pdf \
+  --mime-type application/pdf \
+  --extension pdf
 ```
 
-### 导入外部链接
+`extension` 表示知识条目业务语义，不是存储后端。不要传 `filesystem`、VOD session key 或 `vod_file_id`。
+
+## 底层三步流程（调试用）
 
 ```bash
-lx file create-hyperlink \
-  --url "https://mp.weixin.qq.com/s/xxx" \
-  --parent-entry-id folder_xxx
+lx file apply-upload \
+  --parent-entry-id folder_xxx \
+  --name report.pdf \
+  --size 12345 \
+  --mime-type application/pdf \
+  --extension pdf \
+  --upload-type PRE_SIGNED_URL
+
+curl -X PUT "{upload_url}" --data-binary @./report.pdf
+lx file commit-upload --session-id sess_xxx
 ```
 
-### 下载文件
+手工路径缺一步都会失败；媒体会话还必须携带 apply 返回的 headers/auth，所以优先使用 `lx file upload`。
+
+## 其他文件操作
 
 ```bash
 lx file download-file --file-id file_xxx
-# → 返回临时下载 URL
-```
-
-### 版本回滚
-
-```bash
-# 查看历史版本
 lx file list-revisions --file-id file_xxx
-
-# 恢复到指定版本
 lx file revert-file --file-id file_xxx --revision-id rev_xxx
+lx file create-hyperlink --url "https://..." --parent-entry-id folder_xxx
 ```
 
-## 关键规则
-
-1. **三步上传不可跳**：`lx file apply-upload` → HTTP PUT → `lx file commit-upload`。跳过任何一步文件都不会创建成功。
-2. **新建 vs 更新**的参数差异（这是最容易搞错的）：
-
-   | 场景 | `--file-id` | `--parent-entry-id` |
-   |------|-------------|---------------------|
-   | **新建文件** | 不传 | 父节点的 `entry_id` |
-   | **更新已有文件** | 必填（`lx entry describe-entry` 返回的 `target_id`） | 当前文件条目自己的 `entry_id`（**不是**父节点！） |
-
-3. **获取 file_id**：通过 `lx entry describe-entry` 查询文件条目，返回的 `target_id` 就是 `file_id`。
-4. **COS 注册**：如果文件已在 COS 上有完整 URL，用 `lx file save-file` 比三步上传更快。系统自动获取文件大小和 MIME 类型。
-5. **版本回滚是破坏性操作**：`lx file revert-file` 会将文件恢复到历史版本，当前版本会丢失，执行前确认用户意图。
-
-## ⚠️ 副作用与风险
-
-- 三步上传流程中，Step 2 的 HTTP PUT 是直接上传到预签名 URL，**不经过 lx CLI**。确保在终端或 HTTP 客户端中执行。
-- 更新文件时 `--parent-entry-id` 填的是**文件条目自己的 entry_id**，不是父文件夹——这是最常见的错误。
-- `upload_url` 有时效性，申请后应尽快完成上传和 commit。
-- 版本恢复是**不可逆操作**，当前版本将被覆盖。
+版本恢复是破坏性操作，执行前必须确认。
 
 ## 详细参数
 
-所有命令的完整参数说明请运行：
-
 ```bash
-lx file --help
+lx file upload --help
 lx file apply-upload --help
 lx file commit-upload --help
-# ...
 ```
-
-## 参考
-
-- [lx-entry](../SKILL.md) — 条目 skill 完整决策树
-- [entry-crud.md](entry-crud.md) — 获取条目详情（`target_id` → `file_id`）

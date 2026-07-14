@@ -132,7 +132,7 @@ fn parse_grep_args(args: &[String]) -> Result<GrepOptions, String> {
             }
         } else if arg.starts_with('-') && !arg.starts_with("--") && arg.len() > 1 {
             // 短选项组合: -rni
-            let chars: Vec<char> = arg[1..].chars().collect();
+            let chars: Vec<char> = arg.strip_prefix('-').unwrap_or(arg).chars().collect();
             let mut j = 0;
             while j < chars.len() {
                 match chars[j] {
@@ -348,8 +348,10 @@ fn matches_glob(name: &str, pattern: &str) -> bool {
         return name.ends_with(&format!(".{ext}"));
     }
 
-    if pattern.starts_with('*') && pattern.ends_with('*') {
-        let inner = &pattern[1..pattern.len() - 1];
+    if let Some(inner) = pattern
+        .strip_prefix('*')
+        .and_then(|value| value.strip_suffix('*'))
+    {
         return name.contains(inner);
     }
 

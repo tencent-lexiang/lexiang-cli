@@ -50,13 +50,17 @@ impl Config {
 
     pub fn load() -> Result<Self> {
         let path = Self::config_path();
-        let config = if path.exists() {
+        let mut config = if path.exists() {
             let content = std::fs::read_to_string(&path)?;
             let config: Config = serde_json::from_str(&content)?;
             config
         } else {
             Self::default()
         };
+
+        // 动态命令和本地增强命令会在主 Clap 解析之前加载配置，
+        // 因此环境 token 必须在这里注入，不能只依赖 Cli::parse()。
+        apply_access_token_override(&mut config, std::env::var("LX_ACCESS_TOKEN").ok());
 
         // NOTE: 不在此处加载 TokenStore 中的 token。
         // Config::load() 是同步的，无法执行 async 的 token 刷新操作。
@@ -74,5 +78,39 @@ impl Config {
         let content = serde_json::to_string_pretty(self)?;
         std::fs::write(Self::config_path(), content)?;
         Ok(())
+    }
+}
+
+fn apply_access_token_override(config: &mut Config, token: Option<String>) {
+    if let Some(token) = token.filter(|value| !value.trim().is_empty()) {
+        config.mcp.access_token = Some(token);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn environment_token_overrides_file_configuration() {
+        let mut config = Config::default();
+        config.mcp.access_token = Some("file-token".to_string());
+
+        apply_access_token_override(&mut config, Some("environment-token".to_string()));
+
+        assert_eq!(
+            config.mcp.access_token.as_deref(),
+            Some("environment-token")
+        );
+    }
+
+    #[test]
+    fn empty_environment_token_does_not_clear_configuration() {
+        let mut config = Config::default();
+        config.mcp.access_token = Some("file-token".to_string());
+
+        apply_access_token_override(&mut config, Some("   ".to_string()));
+
+        assert_eq!(config.mcp.access_token.as_deref(), Some("file-token"));
     }
 }

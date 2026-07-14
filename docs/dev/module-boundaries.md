@@ -61,7 +61,7 @@
 |------|------|
 | `Cli` struct | 顶层命令定义 |
 | `Commands` enum | 所有静态子命令（mcp, tools, skill, git, worktree, login, serve, sh...） |
-| `McpCommands` | `lx mcp list/call` |
+| `McpCommands` / `McpResourceCommands` | `lx mcp list/call/resource list/resource read` |
 | `ToolsCommands` | `lx tools sync/list/schema/sync-embedded` |
 | `SkillCommands` | `lx skill generate/install/uninstall/update/status` |
 | `WorktreeCommands` / `GitCommands` | 工作区和 Git 风格操作 |
@@ -128,7 +128,21 @@ lx space list_spaces → 解析 namespace="space", subcommand="list_spaces"
 - 不修改、不转换输入输出数据（除了格式化显示）
 - 被 static 实现覆盖时自动绕过（main.rs 中的优先级判断）
 
-### 2.4 `cmd/tools/mod.rs` — Tool Schema 管理
+### 2.4 `cmd/local_file.rs` — 本地文件增强命令
+
+#### 职责
+
+- `lx file upload`：读取本地二进制文件，调用统一 apply、执行带服务端 headers/auth 的 HTTP PUT，再 commit
+- `lx entry import markdown|html`：读取 UTF-8 原文；HTML `--dir` 在本地校验并压缩为 bundle
+- 只认领这两个精确子命令；其他 `file` / `entry` 命令必须回落到动态分发
+
+#### 边界
+
+- 文件类型只映射为 `mime_type + extension`，不选择 COS/VOD 等存储后端
+- 上传会话形态归一化放在 `mcp/upload.rs`，cmd 层不解析存储协议细节
+- HTML 内容导入与 HTML 文件/bundle 上传保持为两个显式命令
+
+### 2.5 `cmd/tools/mod.rs` — Tool Schema 管理
 
 | 函数 | 职责 |
 |------|------|
@@ -141,7 +155,7 @@ lx space list_spaces → 解析 namespace="space", subcommand="list_spaces"
 
 **边界**：只管 schema 元数据，不管 tool 的实际调用。
 
-### 2.5 `cmd/mcp/mod.rs` — MCP 通用操作
+### 2.6 `cmd/mcp/mod.rs` — MCP 通用操作
 
 | 函数 | 职责 |
 |------|------|
@@ -150,7 +164,7 @@ lx space list_spaces → 解析 namespace="space", subcommand="list_spaces"
 
 **边界**：最底层的 MCP 调用封装，供其他 cmd 模块复用。
 
-### 2.6 其他 cmd 模块
+### 2.7 其他 cmd 模块
 
 | 模块 | 职责 | 边界 |
 |------|------|------|
@@ -260,10 +274,10 @@ handler.rs 中，如果 inventory 表中没有匹配的 method，会自动尝试
 
 | 文件 | 职责 |
 |------|------|
-| `client.rs` | `McpClient`：高层客户端，`list_tools()` / `call_tool()` / `call_raw<T>()` |
+| `client.rs` | `McpClient`：高层客户端，Tool 调用以及 Resource 分页发现/读取 |
 | `caller.rs` | `McpCaller` trait + `RealMcpCaller`：抽象接口，方便测试和注入 |
 | `transport.rs` | `HttpTransport`：底层 HTTP 通信（reqwest），认证 header 注入 |
-| `protocol.rs` | MCP 协议数据结构定义（ToolSchema、ToolsListResult、ToolCallResult...） |
+| `protocol.rs` | MCP 协议数据结构定义（Tool 与 Resource list/read 结果等） |
 | `schema/` | Schema 管理：运行时加载、编译时嵌入、命令生成器（CommandGenerator） |
 | `upload.rs` | 文件上传配置和凭证申请 |
 
@@ -271,6 +285,7 @@ handler.rs 中，如果 inventory 表中没有匹配的 method，会自动尝试
 
 - **纯粹的通信层，不含业务逻辑**
 - 不知道"block"、"entry"、"space"是什么，只知道"tool name + args → result"
+- Resource 内容由服务端拥有；协议层保留 URI、MIME、text/blob，不解析业务 DSL
 - 可被 `cmd/`、`serve/`、`service/`、`shell/` 各层引用
 - **不依赖 `cmd/` 或 `serve/`**
 

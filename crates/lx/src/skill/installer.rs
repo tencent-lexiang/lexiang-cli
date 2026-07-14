@@ -448,12 +448,8 @@ impl SkillInstaller {
     /// 从 SKILL.md 的 YAML frontmatter 提取 description
     fn extract_description(path: &Path) -> Option<String> {
         let content = fs::read_to_string(path).ok()?;
-        if !content.starts_with("---") {
-            return None;
-        }
-        let rest = &content[3..];
-        let end = rest.find("---")?;
-        let frontmatter = &rest[..end];
+        let rest = content.strip_prefix("---")?;
+        let (frontmatter, _) = rest.split_once("---")?;
         for line in frontmatter.lines() {
             let line = line.trim();
             if let Some(desc) = line.strip_prefix("description:") {

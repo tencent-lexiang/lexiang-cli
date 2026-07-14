@@ -116,8 +116,11 @@ fn parse_head_tail_args(args: &[String], default_n: usize) -> (usize, Vec<String
             if i < args.len() {
                 n = args[i].parse().unwrap_or(default_n);
             }
-        } else if arg.starts_with('-') && arg[1..].parse::<usize>().is_ok() {
-            n = arg[1..].parse().unwrap_or(default_n);
+        } else if let Some(value) = arg
+            .strip_prefix('-')
+            .filter(|value| value.parse::<usize>().is_ok())
+        {
+            n = value.parse().unwrap_or(default_n);
         } else if !arg.starts_with('-') {
             files.push(arg.clone());
         }

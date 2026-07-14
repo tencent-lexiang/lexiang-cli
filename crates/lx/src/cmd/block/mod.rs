@@ -18,7 +18,7 @@ pub const STATIC_SUBCOMMANDS: &[&str] = &[
     "ls",
     "get",
     "create",
-    "update",
+    "update-block",
     "delete",
     "move",
     // ── 查询 ──
@@ -123,7 +123,7 @@ pub fn build_block_commands() -> Vec<Command> {
                     .long("children")
                     .help("First-level child IDs (comma-separated)"),
             ),
-        Command::new("update")
+        Command::new("update-block")
             .about("Update a block (supports MDX auto-conversion)")
             .arg(
                 Arg::new("block-id")
@@ -359,12 +359,18 @@ pub async fn try_handle_block_command(args: &[String]) -> Result<bool> {
         block_cmd = block_cmd.after_long_help(
             "\nDynamic subcommands (from MCP, no static wrapper):\n\
              apply-attachment-upload, convert-content-to-blocks,\n\
-             create-descendant, delete-children, describe,\n\
-             list-children, move, update-blocks\n\n\
+             create-descendant, delete-children, describe, fetch,\n\
+             list-children, move, update, update-blocks,\n\
+             smartsheet-create, smartsheet-fetch, smartsheet-list,\n\
+             smartsheet-list-records, smartsheet-update-records,\n\
+             smartsheet-update-schema, smartsheet-update-view\n\n\
              Run without static wrapper:\n\
-               lx block list-children --block-id <id>",
+               lx block fetch --entry-id <id>\n\n\
+             Page DSL resource preflight:\n\
+               lx mcp resource list --format json\n\
+               lx mcp resource read lexiang://docs/block-mdx/v0",
         );
-        block_cmd.print_help().ok();
+        block_cmd.print_long_help().ok();
         println!();
         return Ok(true);
     }
@@ -405,7 +411,7 @@ pub async fn try_handle_block_command(args: &[String]) -> Result<bool> {
         "ls" => handle_ls(&service, sub_matches).await?,
         "get" => handle_get(&service, sub_matches).await?,
         "create" => handle_create(&service, sub_matches).await?,
-        "update" => handle_update(&service, sub_matches).await?,
+        "update-block" => handle_update(&service, sub_matches).await?,
         "delete" => handle_delete(&service, sub_matches).await?,
         "move" => handle_move(&service, sub_matches).await?,
         // ── 查询 ──
@@ -670,13 +676,14 @@ async fn handle_find(service: &BlockService, matches: &clap::ArgMatches) -> Resu
             .chars()
             .take(80)
             .collect::<String>();
+        let short_id: String = m.id.chars().take(12).collect();
         let type_name = m.block_type.as_str();
         println!(
             "[{}] {}[{}] {} \"{}\"",
             i + 1,
             indent,
             type_name,
-            &m.id[..std::cmp::min(12, m.id.len())],
+            short_id,
             text_preview
         );
         if text_preview.chars().count() >= 80 {
@@ -872,18 +879,21 @@ async fn handle_table_get(service: &BlockService, matches: &clap::ArgMatches) ->
         }
         _ => {
             let header_texts: Vec<&str> = table.headers.iter().map(|c| c.text.as_str()).collect();
-            let mut col_widths: Vec<usize> = header_texts.iter().map(|h| h.len()).collect();
+            let mut col_widths: Vec<usize> = header_texts
+                .iter()
+                .map(|header| console::measure_text_width(header))
+                .collect();
             for row in &table.rows {
                 for (i, cell) in row.cells.iter().enumerate() {
                     if i < col_widths.len() {
-                        col_widths[i] = col_widths[i].max(cell.text.len());
+                        col_widths[i] = col_widths[i].max(console::measure_text_width(&cell.text));
                     }
                 }
             }
             let header_line: Vec<String> = header_texts
                 .iter()
                 .enumerate()
-                .map(|(i, h)| format!("{:width$}", h, width = col_widths[i]))
+                .map(|(i, header)| pad_to_display_width(header, col_widths[i]))
                 .collect();
             println!("  {}", header_line.join("  "));
             let sep_line: Vec<String> = col_widths.iter().map(|w| "-".repeat(*w)).collect();
@@ -895,7 +905,7 @@ async fn handle_table_get(service: &BlockService, matches: &clap::ArgMatches) ->
                     .enumerate()
                     .map(|(i, c)| {
                         let width = col_widths.get(i).copied().unwrap_or(0);
-                        format!("{:width$}", c.text, width = width)
+                        pad_to_display_width(&c.text, width)
                     })
                     .collect();
                 println!("  {}", cells.join("  "));
@@ -904,6 +914,11 @@ async fn handle_table_get(service: &BlockService, matches: &clap::ArgMatches) ->
     }
 
     Ok(())
+}
+
+fn pad_to_display_width(value: &str, target_width: usize) -> String {
+    let padding = target_width.saturating_sub(console::measure_text_width(value));
+    format!("{}{}", value, " ".repeat(padding))
 }
 
 async fn handle_table_set(service: &BlockService, matches: &clap::ArgMatches) -> Result<()> {
@@ -1112,5 +1127,18 @@ async fn resolve_update_data(
             let descendant = service.markdown_to_blocks(raw).await?;
             Ok(descendant)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pad_to_display_width;
+
+    #[test]
+    fn pads_multibyte_text_by_terminal_width() {
+        let padded = pad_to_display_width("文档", 6);
+
+        assert_eq!(console::measure_text_width(&padded), 6);
+        assert_eq!(padded, "文档  ");
     }
 }

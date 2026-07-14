@@ -124,6 +124,29 @@ pub enum McpCommands {
         #[arg(short, long)]
         params: Option<String>,
     },
+    /// Discover and read MCP resources such as DSL documentation
+    Resource {
+        #[command(subcommand)]
+        command: McpResourceCommands,
+    },
+}
+
+#[derive(clap::Subcommand)]
+pub enum McpResourceCommands {
+    /// List all resources advertised by the MCP server
+    List {
+        /// Output format
+        #[arg(short = 'o', long, default_value = "table", value_parser = ["table", "json"])]
+        format: String,
+    },
+    /// Read a resource by its server-advertised URI
+    Read {
+        /// Resource URI, for example `lexiang://docs/block-mdx/v0`
+        uri: String,
+        /// Output format; text prints the DSL body directly
+        #[arg(short = 'o', long, default_value = "text", value_parser = ["text", "json"])]
+        format: String,
+    },
 }
 
 #[derive(clap::Subcommand)]

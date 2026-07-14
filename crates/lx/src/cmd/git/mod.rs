@@ -5,6 +5,7 @@ use crate::worktree::{self, Repository, WorktreeConfig, WorktreeRecord, Worktree
 use anyhow::Result;
 use std::collections::HashSet;
 use std::path::PathBuf;
+use unicode_truncate::UnicodeTruncateStr;
 
 mod workspace;
 
@@ -131,7 +132,7 @@ fn handle_commit(message: &str, _all: bool) -> Result<()> {
     let mut repo = Repository::open(&worktree_path)?;
 
     let commit_id = repo.add_and_commit(message)?;
-    ui::print_commit_result("master", &commit_id[..7], message);
+    ui::print_commit_result("master", &abbreviate_id(&commit_id, 7), message);
 
     Ok(())
 }
@@ -176,7 +177,7 @@ fn handle_log(max_count: usize) -> Result<()> {
     let commits = repo.log(Some(max_count))?;
     for commit in commits {
         ui::print_log_entry(
-            &commit.hash[..8],
+            &abbreviate_id(&commit.hash, 8),
             &commit.message,
             &commit.author,
             &commit.date,
@@ -233,7 +234,7 @@ async fn handle_pull(config: &Config) -> Result<()> {
 
     sp.finish_and_clear();
 
-    ui::print_committed(&commit_id[..8]);
+    ui::print_committed(&abbreviate_id(&commit_id, 8));
     ui::print_pull_stats(
         stats.folders_created,
         stats.pages_pulled,
@@ -476,13 +477,19 @@ async fn handle_push(config: &Config, dry_run: bool, force: bool) -> Result<()> 
     Ok(())
 }
 
-/// 截断路径用于进度条显示
-fn truncate_path(path: &str, max_len: usize) -> String {
-    if path.len() <= max_len {
+/// 按终端显示宽度截断路径，用于进度条显示
+fn truncate_path(path: &str, max_width: usize) -> String {
+    if console::measure_text_width(path) <= max_width {
         path.to_string()
     } else {
-        format!("...{}", &path[path.len() - max_len + 3..])
+        let ellipsis = ".".repeat(3.min(max_width));
+        let (suffix, _) = path.unicode_truncate_start(max_width - ellipsis.len());
+        format!("{}{}", ellipsis, suffix)
     }
+}
+
+pub(super) fn abbreviate_id(id: &str, max_chars: usize) -> String {
+    id.chars().take(max_chars).collect()
 }
 
 fn handle_reset(commit: &str, hard: bool) -> Result<()> {
@@ -1039,6 +1046,14 @@ async fn upload_new_file(
         parent_entry_id: parent_entry_id.to_string(),
         file_name: file_name.map(std::string::ToString::to_string),
         content_type: None,
+        extension: file_name
+            .and_then(crate::mcp::upload::semantic_extension)
+            .or_else(|| {
+                file_path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .and_then(crate::mcp::upload::semantic_extension)
+            }),
     };
 
     client.upload_file(&config, file_path).await
@@ -1070,6 +1085,10 @@ async fn update_file_content(
         parent_entry_id: entry_id.to_string(),
         file_name: None,
         content_type: None,
+        extension: file_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(crate::mcp::upload::semantic_extension),
     };
 
     client.upload_file(&config, file_path).await?;
@@ -1218,4 +1237,35 @@ async fn ensure_parent_folders(
     );
 
     Ok(new_folder_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{abbreviate_id, truncate_path};
+
+    #[test]
+    fn truncate_path_keeps_ascii_suffix() {
+        assert_eq!(
+            truncate_path("abcdefghijklmnopqrstuvwxyz", 10),
+            "...tuvwxyz"
+        );
+    }
+
+    #[test]
+    fn truncate_path_handles_multibyte_path() {
+        assert_eq!(
+            truncate_path("一级目录/二级目录/说明文档.md", 12),
+            "...明文档.md"
+        );
+    }
+
+    #[test]
+    fn truncate_path_handles_short_limits() {
+        assert_eq!(truncate_path("中文路径", 2), "..");
+    }
+
+    #[test]
+    fn abbreviate_id_does_not_assume_ascii() {
+        assert_eq!(abbreviate_id("编号abcdef", 4), "编号ab");
+    }
 }

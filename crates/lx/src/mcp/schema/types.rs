@@ -33,7 +33,7 @@ impl McpToolSchema {
                 .input_schema
                 .as_ref()
                 .map(|is| McpInputSchema::from_protocol(is.clone())),
-            output_schema: None,
+            output_schema: ts.output_schema.clone(),
             namespace: None,
             command_name: None,
         }
@@ -110,6 +110,7 @@ impl McpToolSchema {
             name: self.name.clone(),
             description: self.description.clone(),
             input_schema: self.input_schema.as_ref().map(McpInputSchema::to_protocol),
+            output_schema: self.output_schema.clone(),
         }
     }
 }
@@ -383,6 +384,21 @@ pub fn extract_namespace(category: &str) -> String {
     category.rsplit('.').next().unwrap_or(category).to_string()
 }
 
+/// 服务端暂时把这组高层智能表格工具挂在 `knowledge.block` category，
+/// CLI 将它们同时提升到更直观的 `lx smartsheet` namespace。
+pub const PROMOTED_SMARTSHEET_TOOLS: &[&str] = &[
+    "smartsheet_fetch",
+    "smartsheet_create",
+    "smartsheet_update_schema",
+    "smartsheet_update_records",
+    "smartsheet_list_records",
+    "smartsheet_update_view",
+];
+
+pub fn is_promoted_smartsheet_tool(tool_name: &str) -> bool {
+    PROMOTED_SMARTSHEET_TOOLS.contains(&tool_name)
+}
+
 /// 从 tool name 提取命令名
 /// "`team_list_teams`" -> "list"
 /// "`space_describe_space`" -> "describe"
@@ -396,6 +412,12 @@ pub fn extract_namespace(category: &str) -> String {
 /// 优先级最高，匹配后直接返回，不走通用提取逻辑。
 /// 第一个元素为主命令名，第二个元素为额外 alias（用于同一工具的多种叫法）。
 const TOOL_COMMAND_ALIASES: &[(&str, (&str, &[&str]))] = &[
+    // 页面级能力使用最短主命令；旧名称保留为 alias。
+    ("block_fetch_page", ("fetch", &["fetch-page"])),
+    ("block_update_page", ("update", &["update-page"])),
+    // 单块与批量更新显式带 block，避免与页面级 update 冲突。
+    ("block_update_block", ("update-block", &[])),
+    ("block_update_blocks", ("update-blocks", &["update-batch"])),
     ("space_describe_personal_space", ("mine", &[])),
     ("space_list_recently_spaces", ("recent", &["frequent"])),
     ("team_list_frequent_teams", ("frequent", &["recent"])),
@@ -436,9 +458,7 @@ pub fn extract_command_name(tool_name: &str, namespace: &str) -> String {
     // 跳过前缀（namespace 或 tx_meeting 等）
     let skip_count = if parts[0] == "tx" && parts.len() > 2 && parts[1] == "meeting" {
         2 // tx_meeting_*
-    } else if parts[0] == namespace_lower
-        || parts[0] == &namespace_lower[..namespace_lower.len().min(parts[0].len())]
-    {
+    } else if parts[0] == namespace_lower || namespace_lower.starts_with(parts[0]) {
         1 // namespace_*
     } else {
         0
@@ -553,6 +573,25 @@ mod tests {
             extract_command_name("block_list_block_children", "block"),
             "list-children"
         );
+        assert_eq!(
+            extract_command_name("block_update_blocks", "block"),
+            "update-blocks"
+        );
+        assert_eq!(extract_command_name("block_fetch_page", "block"), "fetch");
+        assert_eq!(extract_command_name("block_update_page", "block"), "update");
+        assert_eq!(
+            extract_command_name("block_update_block", "block"),
+            "update-block"
+        );
+        assert_eq!(get_tool_extra_aliases("block_fetch_page"), &["fetch-page"]);
+        assert_eq!(
+            get_tool_extra_aliases("block_update_page"),
+            &["update-page"]
+        );
+        assert_eq!(
+            get_tool_extra_aliases("block_update_blocks"),
+            &["update-batch"]
+        );
 
         // Search patterns (no alias)
         assert_eq!(extract_command_name("search_kb_search", "search"), "kb");
@@ -590,5 +629,7 @@ mod tests {
             get_tool_extra_aliases("space_describe_personal_space"),
             &[] as &[&str]
         );
+
+        assert_eq!(extract_command_name("x_list_items", "文档"), "x-list-items");
     }
 }

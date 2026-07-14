@@ -45,6 +45,14 @@ async fn main() -> anyhow::Result<()> {
     }
     // 不是高级命令，继续 fallthrough 到动态命令
 
+    // 检查需要读取本地文件的增强 file / entry 命令（静态优先，动态回退）
+    if args.len() >= 3
+        && matches!(args[1].as_str(), "file" | "entry")
+        && cmd::try_handle_local_file_command(&args).await?
+    {
+        return Ok(());
+    }
+
     // 检查是否是动态命令
     if args.len() >= 2 {
         if let Some(ref schema) = schema {
@@ -198,6 +206,14 @@ async fn main() -> anyhow::Result<()> {
                     .unwrap_or(serde_json::json!({}));
                 cmd::call_tool(&config, &name, params).await?;
             }
+            cmd::McpCommands::Resource { command } => match command {
+                cmd::McpResourceCommands::List { format } => {
+                    cmd::list_resources(&config, &format).await?;
+                }
+                cmd::McpResourceCommands::Read { uri, format } => {
+                    cmd::read_resource(&config, &uri, &format).await?;
+                }
+            },
         },
         Some(Commands::Tools { command }) => match command {
             cmd::ToolsCommands::Sync => cmd::handle_sync(&config).await?,

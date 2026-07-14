@@ -114,7 +114,10 @@ pub fn parent_path(path: &str) -> String {
     }
     match normalized.rfind('/') {
         Some(0) => "/".to_string(),
-        Some(idx) => normalized[..idx].to_string(),
+        Some(idx) => normalized
+            .get(..idx)
+            .expect("rfind returns a UTF-8 boundary")
+            .to_string(),
         None => ".".to_string(),
     }
 }

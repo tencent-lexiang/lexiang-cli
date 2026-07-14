@@ -47,12 +47,8 @@ fn truncate_str(s: &str, max_chars: usize) -> String {
 fn extract_skill_description(path: &Path) -> Option<String> {
     let content = fs::read_to_string(path).ok()?;
     // 简单解析 YAML frontmatter（--- ... ---）
-    if !content.starts_with("---") {
-        return None;
-    }
-    let rest = &content[3..];
-    let end = rest.find("---")?;
-    let frontmatter = &rest[..end];
+    let rest = content.strip_prefix("---")?;
+    let (frontmatter, _) = rest.split_once("---")?;
 
     for line in frontmatter.lines() {
         let line = line.trim();

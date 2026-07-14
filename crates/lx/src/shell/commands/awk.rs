@@ -229,23 +229,39 @@ fn parse_awk_program(prog: &str, opts: &mut AwkOptions) -> std::result::Result<(
 
     // 提取 BEGIN 块
     if let Some(begin_start) = remaining.find("BEGIN") {
-        let after_begin = &remaining[begin_start + 5..].trim_start();
+        let after_begin = remaining
+            .get(begin_start + "BEGIN".len()..)
+            .expect("find returns a UTF-8 boundary")
+            .trim_start();
         if after_begin.starts_with('{') {
             if let Some(end) = find_matching_brace(after_begin) {
-                let begin_body = &after_begin[1..end];
+                let begin_body = after_begin
+                    .get(1..end)
+                    .expect("brace offsets are UTF-8 boundaries");
                 opts.begin_action = Some(parse_action_body(begin_body));
-                remaining = after_begin[end + 1..].trim();
+                remaining = after_begin
+                    .get(end + 1..)
+                    .expect("brace offsets are UTF-8 boundaries")
+                    .trim();
             }
         }
     }
 
     // 提取 END 块
     if let Some(end_start) = remaining.find("END") {
-        let before_end = &remaining[..end_start].trim();
-        let after_end = &remaining[end_start + 3..].trim_start();
+        let before_end = remaining
+            .get(..end_start)
+            .expect("find returns a UTF-8 boundary")
+            .trim();
+        let after_end = remaining
+            .get(end_start + "END".len()..)
+            .expect("find returns a UTF-8 boundary")
+            .trim_start();
         if after_end.starts_with('{') {
             if let Some(end) = find_matching_brace(after_end) {
-                let end_body = &after_end[1..end];
+                let end_body = after_end
+                    .get(1..end)
+                    .expect("brace offsets are UTF-8 boundaries");
                 opts.end_action = Some(parse_action_body(end_body));
                 remaining = before_end;
             }
@@ -260,11 +276,18 @@ fn parse_awk_program(prog: &str, opts: &mut AwkOptions) -> std::result::Result<(
     // /pattern/ {action} 模式
     if let Some(stripped) = remaining.strip_prefix('/') {
         if let Some(end_slash) = stripped.find('/') {
-            let pattern = &stripped[..end_slash];
+            let pattern = stripped
+                .get(..end_slash)
+                .expect("find returns a UTF-8 boundary");
             opts.condition = Condition::Pattern(pattern.to_string());
-            let rest = stripped[end_slash + 1..].trim();
-            if rest.starts_with('{') && rest.ends_with('}') {
-                let body = &rest[1..rest.len() - 1];
+            let rest = stripped
+                .get(end_slash + 1..)
+                .expect("ASCII delimiter ends on a UTF-8 boundary")
+                .trim();
+            if let Some(body) = rest
+                .strip_prefix('{')
+                .and_then(|value| value.strip_suffix('}'))
+            {
                 opts.action = Some(parse_action_body(body));
             } else if rest.is_empty() {
                 // /pattern/ 不带 action → 默认 print $0
@@ -285,8 +308,10 @@ fn parse_awk_program(prog: &str, opts: &mut AwkOptions) -> std::result::Result<(
     }
 
     // {action} 纯动作
-    if remaining.starts_with('{') && remaining.ends_with('}') {
-        let body = &remaining[1..remaining.len() - 1];
+    if let Some(body) = remaining
+        .strip_prefix('{')
+        .and_then(|value| value.strip_suffix('}'))
+    {
         opts.action = Some(parse_action_body(body));
         return Ok(());
     }
@@ -329,10 +354,15 @@ fn parse_print_fields(expr: &str) -> Vec<FieldRef> {
             fields.push(FieldRef::Nr);
         } else if part == "NF" {
             fields.push(FieldRef::Nf);
-        } else if (part.starts_with('"') && part.ends_with('"'))
-            || (part.starts_with('\'') && part.ends_with('\''))
+        } else if let Some(literal) = part
+            .strip_prefix('"')
+            .and_then(|value| value.strip_suffix('"'))
+            .or_else(|| {
+                part.strip_prefix('\'')
+                    .and_then(|value| value.strip_suffix('\''))
+            })
         {
-            fields.push(FieldRef::Literal(part[1..part.len() - 1].to_string()));
+            fields.push(FieldRef::Literal(literal.to_string()));
         } else if !part.is_empty() {
             // 当作字面量
             fields.push(FieldRef::Literal(part.to_string()));

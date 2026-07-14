@@ -48,29 +48,19 @@ pub fn parse_mdx(input: &str) -> Result<Node, ParseError> {
 /// If no frontmatter is found, returns (`original_input`, None).
 fn strip_frontmatter(input: &str) -> (&str, Option<String>) {
     let trimmed = input.trim_start();
-    if !trimmed.starts_with("---") {
+    let Some(after_open) = trimmed.strip_prefix("---") else {
         return (input, None);
-    }
-
-    // Need at least "---\n" after opening
-    if trimmed.len() < 4 {
-        return (input, None);
-    }
+    };
 
     // Find closing ---
-    if let Some(end_pos) = trimmed[3..].find("\n---") {
-        let after_open = &trimmed[3..];
-        let fm_content = after_open[..end_pos].trim().to_string();
-        let body_start = end_pos + 5; // skip "\n---" (4 chars + 1 newline)
-        if body_start <= after_open.len() {
-            let body = &after_open[body_start..];
-            (body.trim_start(), Some(fm_content))
-        } else {
-            (input, None)
-        }
-    } else {
-        (input, None)
-    }
+    let Some((frontmatter, after_close)) = after_open.split_once("\n---") else {
+        return (input, None);
+    };
+    let Some(body) = after_close.strip_prefix('\n') else {
+        return (input, None);
+    };
+
+    (body.trim_start(), Some(frontmatter.trim().to_string()))
 }
 
 // ---- Error type ----
@@ -680,7 +670,10 @@ fn try_extract_attr_direct(node: &mut Node) -> bool {
 
     if let Some(idx) = last_expr_idx {
         if let Some(ref expr_text) = node.children[idx].text {
-            let inner = &expr_text[1..expr_text.len() - 1]; // strip { and }
+            let inner = expr_text
+                .strip_prefix('{')
+                .and_then(|value| value.strip_suffix('}'))
+                .expect("expression was checked for matching braces");
             if let Some(attr) = parse_key_value_attr(inner) {
                 match attr.key.as_str() {
                     "color" => {
@@ -721,27 +714,30 @@ fn strip_trailing_text_attr(s: &str) -> Option<(String, BlockAttr)> {
     }
 
     let open_pos = trimmed.rfind('{')?;
-    let inner = &trimmed[open_pos + 1..trimmed.len() - 1];
+    let inner = trimmed
+        .get(open_pos..)?
+        .strip_prefix('{')?
+        .strip_suffix('}')?;
     let attr = parse_key_value_attr(inner)?;
 
-    let remaining = trimmed[..open_pos].trim_end().to_string();
+    let remaining = trimmed.get(..open_pos)?.trim_end().to_string();
     Some((remaining, attr))
 }
 
 /// Parse `key="value"` string into `BlockAttr`.
 /// Supports: color, toggle
 fn parse_key_value_attr(s: &str) -> Option<BlockAttr> {
-    let eq_pos = s.find('=')?;
-    let key = s[..eq_pos].trim();
-    let value_raw = s[eq_pos + 1..].trim();
-
-    if !(value_raw.starts_with('"') && value_raw.ends_with('"')
-        || value_raw.starts_with('\'') && value_raw.ends_with('\''))
-    {
-        return None;
-    }
-
-    let value = &value_raw[1..value_raw.len() - 1];
+    let (key, value_raw) = s.split_once('=')?;
+    let key = key.trim();
+    let value_raw = value_raw.trim();
+    let value = value_raw
+        .strip_prefix('"')
+        .and_then(|value| value.strip_suffix('"'))
+        .or_else(|| {
+            value_raw
+                .strip_prefix('\'')
+                .and_then(|value| value.strip_suffix('\''))
+        })?;
 
     // Validate key is a known Notion block attribute
     match key {

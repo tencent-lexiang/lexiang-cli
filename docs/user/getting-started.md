@@ -80,6 +80,20 @@ lx search kb --keyword "项目文档"
 lx sh --space <SPACE_ID> -e "tree -L 2 /kb"
 ```
 
+### 上传本地内容
+
+```bash
+# 上传 PDF、Office、图片、视频或音频文件
+lx file upload ./report.pdf --parent-entry-id <PARENT_ENTRY_ID>
+
+# 将本地 Markdown/HTML 导入为可编辑页面
+lx entry import markdown ./document.md --parent-id <PARENT_ENTRY_ID>
+lx entry import html ./page.html --parent-id <PARENT_ENTRY_ID>
+
+# HTML 物料目录自动打包上传（目录根必须有 index.html）
+lx entry import html ./dist --dir --parent-id <PARENT_ENTRY_ID>
+```
+
 ## 下一步
 
 - [命令参考](./commands.md) — 所有 namespace 和 tool 的完整列表
