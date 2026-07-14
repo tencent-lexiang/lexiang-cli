@@ -464,8 +464,7 @@ mod tests {
 
     #[test]
     fn data_raw_satisfies_schema_required_arguments() {
-        let schema = crate::mcp::schema::embedded::load_embedded_collection()
-            .expect("embedded schema should load");
+        let schema = crate::mcp::schema::test_command_schema();
         let generator = CommandGenerator::new(&schema);
         let block = generator
             .generate_namespaces()
@@ -485,8 +484,7 @@ mod tests {
 
     #[test]
     fn page_and_smartsheet_capabilities_generate_and_accept_json() {
-        let schema = crate::mcp::schema::embedded::load_embedded_collection()
-            .expect("embedded schema should load");
+        let schema = crate::mcp::schema::test_command_schema();
 
         let cases: &[(&str, &[&str])] = &[
             (

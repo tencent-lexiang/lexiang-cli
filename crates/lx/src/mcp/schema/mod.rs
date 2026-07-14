@@ -241,3 +241,86 @@ fn resolve_ref<'a>(
         .or_else(|| ref_str.strip_prefix("#/definitions/"))?;
     defs?.get(name)
 }
+
+#[cfg(test)]
+pub(crate) fn test_command_schema() -> McpSchemaCollection {
+    use types::{McpCategory, McpCategoryTool, McpInputSchema};
+
+    fn tools(names: &[&str]) -> Vec<McpCategoryTool> {
+        names
+            .iter()
+            .map(|name| McpCategoryTool {
+                name: (*name).to_string(),
+                description: Some(format!("Synthetic schema for {name}")),
+            })
+            .collect()
+    }
+
+    const BLOCK_SMARTSHEET_TOOLS: &[&str] = &[
+        "smartsheet_create",
+        "smartsheet_fetch",
+        "smartsheet_list",
+        "smartsheet_list_records",
+        "smartsheet_update_records",
+        "smartsheet_update_schema",
+        "smartsheet_update_view",
+    ];
+
+    const SMARTSHEET_TOOLS: &[&str] = &[
+        "smartsheet_create",
+        "smartsheet_fetch",
+        "smartsheet_update_schema",
+        "smartsheet_create_field",
+        "smartsheet_create_records",
+        "smartsheet_create_view",
+        "smartsheet_delete_field",
+        "smartsheet_delete_records",
+        "smartsheet_delete_view",
+        "smartsheet_describe_record",
+        "smartsheet_list_fields",
+        "smartsheet_list_records",
+        "smartsheet_list_smartsheets",
+        "smartsheet_list_views",
+        "smartsheet_update_field",
+        "smartsheet_update_records",
+        "smartsheet_update_view",
+    ];
+
+    let mut block_tool_names = vec![
+        "block_fetch_page",
+        "block_update_page",
+        "block_update_block",
+        "block_update_blocks",
+    ];
+    block_tool_names.extend_from_slice(BLOCK_SMARTSHEET_TOOLS);
+
+    let categories = vec![
+        McpCategory {
+            name: "knowledge.block".to_string(),
+            description: Some("Synthetic block operations".to_string()),
+            tool_count: block_tool_names.len() as u32,
+            tools: tools(&block_tool_names),
+        },
+        McpCategory {
+            name: "knowledge.smartsheet".to_string(),
+            description: Some("Synthetic smartsheet operations".to_string()),
+            tool_count: SMARTSHEET_TOOLS.len() as u32,
+            tools: tools(SMARTSHEET_TOOLS),
+        },
+    ];
+
+    let mut schema = McpSchemaCollection::from_categories(categories);
+    schema
+        .tools
+        .get_mut("block_update_page")
+        .expect("synthetic block update tool should exist")
+        .input_schema = McpInputSchema::from_value(&serde_json::json!({
+        "type": "object",
+        "properties": {
+            "entry_id": { "type": "string" }
+        },
+        "required": ["entry_id"]
+    }));
+
+    schema
+}

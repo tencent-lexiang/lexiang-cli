@@ -187,8 +187,7 @@ mod tests {
 
     #[test]
     fn page_commands_resolve_to_page_tools() {
-        let schema = crate::mcp::schema::embedded::load_embedded_collection()
-            .expect("embedded schema should load");
+        let schema = crate::mcp::schema::test_command_schema();
 
         assert_eq!(
             find_tool_by_command(&schema, "block", "fetch").unwrap(),
@@ -210,8 +209,7 @@ mod tests {
 
     #[test]
     fn smartsheet_commands_resolve_to_expected_tools() {
-        let schema = crate::mcp::schema::embedded::load_embedded_collection()
-            .expect("embedded schema should load");
+        let schema = crate::mcp::schema::test_command_schema();
         let cases = [
             ("smartsheet", "create", "smartsheet_create"),
             ("smartsheet", "fetch", "smartsheet_fetch"),
