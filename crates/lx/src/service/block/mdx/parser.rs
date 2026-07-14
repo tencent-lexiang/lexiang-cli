@@ -252,10 +252,10 @@ fn mdast_nodes_to_ir(
                 }
             }
             markdown::mdast::Node::MdxTextExpression(expr) => {
-                children.push(Node::plain_text(format!("{{{}}}", &expr.value)));
+                children.push(Node::plain_text(format!("{{{}}}", expr.value)));
             }
             markdown::mdast::Node::MdxFlowExpression(expr) => {
-                children.push(Node::plain_text(format!("{{{}}}", &expr.value)));
+                children.push(Node::plain_text(format!("{{{}}}", expr.value)));
             }
             _ => {} // Skip unknown node types
         }
@@ -407,7 +407,7 @@ fn mdast_inline_to_ir_fallible(nodes: &[markdown::mdast::Node]) -> Option<Vec<No
                 result.push(Node::image(None, Some(&img.alt)));
             }
             markdown::mdast::Node::MdxTextExpression(expr) => {
-                result.push(Node::plain_text(format!("{{{}}}", &expr.value)));
+                result.push(Node::plain_text(format!("{{{}}}", expr.value)));
             }
             markdown::mdast::Node::MdxJsxTextElement(el) => {
                 let name = el.name.as_deref().unwrap_or("").to_lowercase();
