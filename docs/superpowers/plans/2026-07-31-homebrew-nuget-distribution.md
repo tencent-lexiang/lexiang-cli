@@ -113,10 +113,11 @@ launcher and MUST publish through nuget.org Trusted Publishing by default.
 
 - [ ] **Step 3: Write the design and task ledger**
 
-In `design.md`, record the fixed manifest base URL variable, allowed-host check,
+In `design.md`, record the fixed public CDN manifest root, allowed-host check,
 checked-in or repository-variable public key, separate tap repository,
 `release` GitHub Environment, NuGet package ID `TencentLexiang.Cli`, and the
-decision not to use postinstall downloads or long-lived NuGet keys.
+decision not to use postinstall downloads or long-lived NuGet keys. Explicitly
+exclude the internal `mirrors.tencent.com` upload origin from workflow inputs.
 
 In `tasks.md`, mirror Tasks 2–8 from this plan using OpenSpec numbered checkbox
 syntax.
@@ -325,7 +326,9 @@ Expected: FAIL because the workflow does not exist.
 
 The workflow MUST:
 
-- accept `version`, `manifest_base_url`, and boolean `publish` inputs;
+- accept `version` and boolean `publish` inputs;
+- fetch manifests only from the fixed public CDN root
+  `https://static.lexiang-asset.com/download/app/lexiang-desktop`;
 - set explicit minimal `permissions: contents: read`;
 - decode `vars.LEXIANG_CLI_RELEASE_PUBLIC_KEY_B64` into a temporary key;
 - verify `mac-arm64` and `mac-x64` manifests and artifacts;
@@ -475,7 +478,9 @@ Expected: FAIL because the workflow does not exist.
 
 The workflow MUST:
 
-- accept `version`, `manifest_base_url`, and boolean `publish`;
+- accept `version` and boolean `publish`;
+- fetch manifests only from the fixed public CDN root
+  `https://static.lexiang-asset.com/download/app/lexiang-desktop`;
 - verify the signed Windows x64 manifest and `lx.exe`;
 - run .NET tests and `dotnet pack`;
 - install the generated package into a temporary tool path on
@@ -536,9 +541,10 @@ Document these exact supported paths:
    `Metadata: Read`; set an expiration and store it as the `release`
    environment secret `HOMEBREW_TAP_TOKEN`, then use the documented fallback
    workflow patch.
-4. Set `HOMEBREW_TAP_REPOSITORY=tencent-lexiang/homebrew-tap`,
-   `LEXIANG_CLI_MANIFEST_BASE_URL`, and
+4. Set `HOMEBREW_TAP_REPOSITORY=tencent-lexiang/homebrew-tap` and
    `LEXIANG_CLI_RELEASE_PUBLIC_KEY_B64` as `release` environment variables.
+   Document that `mirrors.tencent.com` is the internal upload origin and MUST
+   NOT be configured as a consumer download URL.
 5. Create or join the nuget.org organization that will own
    `TencentLexiang.Cli`.
 6. Create a nuget.org Trusted Publishing policy with GitHub owner
