@@ -1,0 +1,39 @@
+# Node.js
+node_modules/
+dist/
+*.tsbuildinfo
+.eslintcache
+*.vsix
+
+# NuGet
+packages/nuget-cli/bin/
+packages/nuget-cli/obj/
+
+# IDE
+.idea/
+.vscode/
+.codebuddy/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+
+# Agent
+docs/plans.worktrees/
+.worktrees/
+openspec/specs
+openspec/changes
+packages/app-vscode/bin/lx

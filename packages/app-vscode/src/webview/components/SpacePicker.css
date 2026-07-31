@@ -1,0 +1,343 @@
+/* SpacePicker Webview Styles — uses VS Code CSS variables for theming */
+
+:root {
+  --picker-bg: var(--vscode-editor-background);
+  --picker-fg: var(--vscode-editor-foreground);
+  --border-color: var(--vscode-panel-border, var(--vscode-widget-border, rgb(128 128 128 / 35%)));
+  --hover-bg: var(--vscode-list-hoverBackground);
+  --active-bg: var(--vscode-list-activeSelectionBackground);
+  --active-fg: var(--vscode-list-activeSelectionForeground);
+  --input-bg: var(--vscode-input-background);
+  --input-fg: var(--vscode-input-foreground);
+  --input-border: var(--vscode-input-border, transparent);
+  --btn-bg: var(--vscode-button-background);
+  --btn-fg: var(--vscode-button-foreground);
+  --btn-hover-bg: var(--vscode-button-hoverBackground);
+  --btn-secondary-bg: var(--vscode-button-secondaryBackground);
+  --btn-secondary-fg: var(--vscode-button-secondaryForeground);
+  --btn-secondary-hover-bg: var(--vscode-button-secondaryHoverBackground);
+  --focus-border: var(--vscode-focusBorder);
+  --tab-active-bg: var(--vscode-tab-activeBackground, var(--active-bg));
+  --tab-inactive-fg: var(--vscode-tab-inactiveForeground, rgb(128 128 128 / 80%));
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--picker-bg);
+  color: var(--picker-fg);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size, 13px);
+  line-height: 1.4;
+  overflow: hidden;
+}
+
+.space-picker {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  max-height: 100vh;
+}
+
+/* ── Header ── */
+
+.picker-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.tab {
+  padding: 6px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--tab-inactive-fg);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.15s ease;
+}
+
+.tab:hover {
+  background: var(--hover-bg);
+  color: var(--picker-fg);
+}
+
+.tab.active {
+  background: var(--active-bg);
+  color: var(--active-fg, var(--picker-fg));
+  border-color: var(--focus-border);
+}
+
+.search-box {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+
+.search-box:focus-within {
+  border-color: var(--focus-border);
+}
+
+.search-icon {
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.search-box input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--input-fg);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.search-box input::placeholder {
+  color: var(--vscode-input-placeholderForeground, rgb(128 128 128 / 60%));
+}
+
+.search-target-select {
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--input-fg);
+  border-radius: 4px;
+  font-size: 12px;
+  padding: 2px 6px;
+  min-width: 82px;
+}
+
+.search-target-select:focus {
+  outline: 1px solid var(--focus-border);
+}
+
+/* ── Content ── */
+
+.picker-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Recent / Search list ── */
+
+.space-list {
+  overflow-y: auto;
+  padding: 4px 0;
+  flex: 1;
+}
+
+.space-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background 0.1s;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.space-item:last-child {
+  border-bottom: none;
+}
+
+.space-item:hover {
+  background: var(--hover-bg);
+}
+
+.space-icon {
+  flex-shrink: 0;
+  font-size: 16px;
+  opacity: 0.8;
+}
+
+.space-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-doc-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.search-doc-meta {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.search-highlight {
+  background: color-mix(in srgb, var(--vscode-editor-findMatchHighlightBackground, #d18616) 65%, transparent);
+  color: var(--picker-fg);
+  padding: 0 1px;
+  border-radius: 2px;
+}
+
+/* ── Team View (two-column) ── */
+
+.team-view {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.team-list-panel {
+  width: 220px;
+  min-width: 180px;
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.space-list-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  opacity: 0.8;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.icon-btn {
+  background: none;
+  border: none;
+  color: var(--picker-fg);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  opacity: 0.7;
+}
+
+.icon-btn:hover {
+  opacity: 1;
+  background: var(--hover-bg);
+}
+
+.team-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 4px 0;
+}
+
+.team-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.team-item:hover {
+  background: var(--hover-bg);
+}
+
+.team-item.active {
+  background: var(--active-bg);
+  color: var(--active-fg, var(--picker-fg));
+}
+
+.team-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+  opacity: 0.7;
+}
+
+.team-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Empty / Loading states ── */
+
+.loading,
+.empty,
+.empty-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  opacity: 0.6;
+  font-size: 13px;
+}
+
+/* ── Footer ── */
+
+.picker-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.btn {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.btn-primary {
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--btn-hover-bg);
+}
+
+.btn-default {
+  background: var(--btn-secondary-bg);
+  color: var(--btn-secondary-fg);
+}
+
+.btn-default:hover:not(:disabled) {
+  background: var(--btn-secondary-hover-bg);
+}

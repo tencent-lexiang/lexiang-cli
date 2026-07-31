@@ -1,0 +1,14 @@
+.vscode/**
+.vscode-test/**
+out/**
+node_modules/**
+src/**
+.gitignore
+build.mjs
+esbuild.mjs
+vite.config.ts
+**/*.map
+**/*.ts
+tsconfig.json
+# 保留 bin/ 目录（自带 lx 二进制）— 不忽略
+# bin/**

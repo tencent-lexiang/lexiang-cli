@@ -1,0 +1,51 @@
+name: VS Code Extension Release
+
+on:
+  push:
+    tags:
+      - 'vscode-v*'
+
+defaults:
+  run:
+    working-directory: packages/app-vscode
+
+jobs:
+  release:
+    name: Build & Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: packages/app-vscode/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (minify)
+        run: node esbuild.mjs --minify
+
+      - name: Package VSIX
+        run: npx vsce package --no-dependencies
+
+      - name: Extract version
+        id: version
+        shell: bash
+        run: |
+          version="${GITHUB_REF#refs/tags/vscode-v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: VS Code Extension v${{ steps.version.outputs.version }}
+          draft: false
+          prerelease: false
+          files: packages/app-vscode/*.vsix
+          generate_release_notes: true
