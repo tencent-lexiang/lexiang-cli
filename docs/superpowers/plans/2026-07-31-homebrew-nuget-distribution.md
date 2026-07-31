@@ -1,12 +1,12 @@
-# Homebrew and NuGet Distribution Implementation Plan
+# Homebrew Formula, Desktop Cask, and NuGet Distribution Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add dry-run-safe and production-gated Homebrew and NuGet distribution workflows to `tencent-lexiang/lexiang-cli` without rebuilding the Rust CLI in this repository.
+**Goal:** Add dry-run-safe and production-gated Homebrew Formula, Homebrew Cask, and NuGet distribution workflows to `tencent-lexiang/lexiang-cli` without rebuilding the Rust CLI or Desktop App in this repository.
 
-**Architecture:** Both workflows consume per-platform signed CLI manifests and immutable native binaries produced by `lexiang-desktop`. Shared Python tooling verifies the Ed25519 signature, release version, HTTPS artifact URL, size, and SHA-256 before a package is generated. Homebrew publication updates a separate `tencent-lexiang/homebrew-tap` repository; NuGet publication uses nuget.org Trusted Publishing through GitHub OIDC.
+**Architecture:** CLI workflows consume per-platform signed CLI manifests and immutable native binaries produced by `lexiang-desktop`. Shared Python tooling verifies the Ed25519 signature, release version, HTTPS artifact URL, size, and SHA-256 before a package is generated. A separate Cask workflow consumes exact public CDN DMGs and requires Developer ID, Gatekeeper, and stapled notarization validation. Homebrew publication updates `tencent-lexiang/homebrew-tap`; NuGet publication uses nuget.org Trusted Publishing through GitHub OIDC.
 
-**Tech Stack:** GitHub Actions, Python 3 standard library, OpenSSL CLI, Homebrew Formula DSL, .NET 8 global-tool shim, NuGet Trusted Publishing.
+**Tech Stack:** GitHub Actions, Python 3 standard library, OpenSSL CLI, macOS codesign/Gatekeeper/stapler, Homebrew Formula and Cask DSLs, .NET 8 global-tool shim, NuGet Trusted Publishing.
 
 ---
 
@@ -21,13 +21,19 @@ This plan is the first independently testable part of the `lexiang-cli` reposito
 - `distribution/release/test_manifest.py`: standard-library unit tests for verification failures and success.
 - `distribution/homebrew/render_formula.py`: deterministic `Formula/lx.rb` renderer.
 - `distribution/homebrew/test_render_formula.py`: renderer contract tests.
+- `distribution/homebrew/render_cask.py`: deterministic
+  `Casks/lexiang.rb` renderer.
+- `distribution/homebrew/test_render_cask.py`: Cask renderer contract tests.
 - `distribution/homebrew/README.md`: tap topology and local dry-run commands.
 - `distribution/nuget/TencentLexiang.Cli/TencentLexiang.Cli.csproj`: Windows x64 .NET global-tool package.
 - `distribution/nuget/TencentLexiang.Cli/Program.cs`: thin process launcher for the packaged native `lx.exe`.
 - `distribution/nuget/TencentLexiang.Cli.Tests/`: launcher behavior tests using a fake native child.
 - `distribution/nuget/README.md`: package build and local installation guide.
-- `.github/workflows/distribution-ci.yml`: credential-free manifest, formula, and NuGet package validation.
+- `.github/workflows/distribution-ci.yml`: credential-free manifest, Formula,
+  Cask, and NuGet package validation.
 - `.github/workflows/homebrew-release.yml`: protected Homebrew formula publication.
+- `.github/workflows/homebrew-cask-release.yml`: protected Desktop Cask
+  publication.
 - `.github/workflows/nuget-release.yml`: protected NuGet OIDC publication.
 - `docs/releasing/distribution-credentials.md`: credential application and GitHub configuration guide.
 - `README.md`: public installation commands and repository responsibility statement.
@@ -56,6 +62,7 @@ modify the native executable.
 ## What Changes
 - Add signed desktop CLI manifest and artifact verification.
 - Add Homebrew formula generation and protected tap publication.
+- Add Homebrew Cask generation for signed and notarized Desktop DMGs.
 - Add a Windows x64 NuGet global-tool wrapper and OIDC publication.
 - Add credential-free dry-run CI and operator credential documentation.
 - Keep the existing Rust CLI temporarily; its removal is a later change.
@@ -97,6 +104,21 @@ protected release job updates the configured tap repository.
 - **WHEN** publication is enabled and the release environment is approved
 - **THEN** the exact tested formula is committed to the configured tap
 
+### Requirement: Protected Desktop Cask publication
+The repository MUST render and install-test a macOS arm64/x64 Cask and MUST
+reject DMGs or App bundles that fail Developer ID, Gatekeeper, or stapled
+notarization validation.
+
+#### Scenario: Dry-run Cask
+- **WHEN** a maintainer supplies an exact version and build date without
+  publication enabled
+- **THEN** the verified Cask is uploaded only as a workflow artifact
+
+#### Scenario: Published Cask
+- **WHEN** both DMGs pass notarization validation and the release environment
+  is approved
+- **THEN** the exact tested Cask is committed to the configured tap
+
 ### Requirement: Keyless NuGet publication
 The repository MUST package the Windows x64 native CLI behind a thin .NET tool
 launcher and MUST publish through nuget.org Trusted Publishing by default.
@@ -118,6 +140,8 @@ checked-in or repository-variable public key, separate tap repository,
 `release` GitHub Environment, NuGet package ID `TencentLexiang.Cli`, and the
 decision not to use postinstall downloads or long-lived NuGet keys. Explicitly
 exclude the internal `mirrors.tencent.com` upload origin from workflow inputs.
+Record the Desktop DMG naming contract and Apple notarization as a hard Cask
+publication prerequisite.
 
 In `tasks.md`, mirror Tasks 2–8 from this plan using OpenSpec numbered checkbox
 syntax.
@@ -225,12 +249,14 @@ git add distribution/release
 git commit -m "feat: 校验 desktop CLI 发布制品"
 ```
 
-### Task 3: Generate and test the Homebrew formula
+### Task 3: Generate and test the Homebrew Formula and Cask
 
 **Files:**
 
 - Create: `distribution/homebrew/render_formula.py`
 - Create: `distribution/homebrew/test_render_formula.py`
+- Create: `distribution/homebrew/render_cask.py`
+- Create: `distribution/homebrew/test_render_cask.py`
 - Create: `distribution/homebrew/README.md`
 
 - [ ] **Step 1: Write failing renderer tests**
@@ -283,24 +309,61 @@ ruby -c /tmp/lx.rb
 
 Expected: unit tests pass and Ruby prints `Syntax OK`.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Write failing Cask renderer tests**
+
+Tests MUST assert that the Cask uses token `lexiang`, exact versioned arm64/x64
+CDN URLs and SHA-256 values, `auto_updates true`, and
+`app "TencentLexiang.app"`. The renderer MUST validate a semantic version and
+an eight-digit build date.
+
+- [ ] **Step 6: Run tests and verify failure**
+
+```bash
+python3 -m unittest distribution.homebrew.test_render_cask -v
+```
+
+Expected: FAIL because the Cask renderer does not exist.
+
+- [ ] **Step 7: Implement deterministic Cask rendering**
+
+Expose a keyword-only `render_cask` function accepting `version`, `date_stamp`,
+`arm64_sha256`, and `x64_sha256`. Construct both URLs under the fixed public
+CDN, add `auto_updates true`, and install `TencentLexiang.app`.
+
+- [ ] **Step 8: Run Cask unit and Ruby syntax tests**
+
+```bash
+python3 -m unittest distribution.homebrew.test_render_cask -v
+python3 distribution/homebrew/render_cask.py \
+  --version 0.0.0-test \
+  --date-stamp 20260731 \
+  --arm64-sha256 0000000000000000000000000000000000000000000000000000000000000000 \
+  --x64-sha256 1111111111111111111111111111111111111111111111111111111111111111 \
+  --output /tmp/lexiang.rb
+ruby -c /tmp/lexiang.rb
+```
+
+Expected: tests pass and Ruby prints `Syntax OK`.
+
+- [ ] **Step 9: Commit**
 
 ```bash
 git add distribution/homebrew
-git commit -m "feat: 生成 Homebrew lx 配方"
+git commit -m "feat: 生成 Homebrew Formula 与 Cask"
 ```
 
-### Task 4: Add the protected Homebrew workflow
+### Task 4: Add the protected Homebrew workflows
 
 **Files:**
 
 - Create: `.github/workflows/homebrew-release.yml`
+- Create: `.github/workflows/homebrew-cask-release.yml`
 - Modify: `distribution/homebrew/README.md`
 
 - [ ] **Step 1: Add a workflow contract test**
 
-Create `distribution/homebrew/test_workflow.py` that parses the workflow as text
-and asserts:
+Create `distribution/homebrew/test_workflow.py` that parses both workflows as
+text. Assert this Formula workflow contract:
 
 ```python
 self.assertIn("workflow_dispatch:", workflow)
@@ -349,20 +412,42 @@ No untrusted input may be interpolated into `run:` shell source. Pass inputs
 through environment variables and validate version with
 `^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$`.
 
-- [ ] **Step 4: Run contract and action lint**
+- [ ] **Step 4: Implement the Cask workflow**
+
+The Cask workflow MUST:
+
+- accept `version`, eight-digit `date_stamp`, and boolean `publish`;
+- construct arm64/x64 DMG URLs only under
+  `https://static.lexiang-asset.com/download/app/lexiang-desktop`;
+- verify the mounted `TencentLexiang.app` signature and Gatekeeper assessment;
+- require stapler validation for both the DMG and App bundle;
+- compute SHA-256 and render `Casks/lexiang.rb`;
+- run `brew audit --cask --strict` and a local Cask installation;
+- upload the tested Cask as an Actions artifact;
+- request the tap credential only after `release` Environment approval; and
+- publish the exact tested Cask to `Casks/lexiang.rb`.
+
+The current `lexiang-desktop` configuration has `notarize: false`; a real Cask
+dry run or publication MUST remain blocked until both public DMGs have stapled
+notarization tickets.
+
+- [ ] **Step 5: Run contract and action lint**
 
 ```bash
 python3 -m unittest distribution.homebrew.test_workflow -v
 actionlint .github/workflows/homebrew-release.yml
+actionlint .github/workflows/homebrew-cask-release.yml
 ```
 
 Expected: tests pass and `actionlint` exits 0.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add .github/workflows/homebrew-release.yml distribution/homebrew
-git commit -m "ci: 添加 Homebrew 发布流程"
+git add .github/workflows/homebrew-release.yml \
+  .github/workflows/homebrew-cask-release.yml \
+  distribution/homebrew
+git commit -m "ci: 添加 Homebrew Formula 与 Cask 发布流程"
 ```
 
 ### Task 5: Build a thin Windows NuGet global-tool wrapper
@@ -521,7 +606,7 @@ git commit -m "ci: 添加 NuGet OIDC 发布流程"
 - [ ] **Step 1: Add a credential-free CI workflow**
 
 Run Python unit tests, Ruby syntax validation, .NET tests, NuGet pack inspection,
-and `actionlint` on changes to `distribution/**` or the three distribution
+and `actionlint` on changes to `distribution/**` or the four distribution
 workflows. CI MUST use fake test artifacts and MUST NOT reference the `release`
 environment or any secret.
 
@@ -572,11 +657,14 @@ Add:
 
 ```bash
 brew install tencent-lexiang/tap/lx
+brew install --cask tencent-lexiang/tap/lexiang
 dotnet tool install --global TencentLexiang.Cli
 ```
 
-State that both install the native CLI built by `lexiang-desktop` and that this
-repository contains distribution adapters, not the canonical native source.
+State that the Formula and NuGet tool install the native CLI built by
+`lexiang-desktop`, while the Cask installs the signed and notarized Desktop
+App. This repository contains distribution adapters, not their canonical
+source.
 
 - [ ] **Step 4: Run documentation and workflow checks**
 
@@ -617,14 +705,15 @@ Expected: all available commands pass. If `dotnet` is unavailable locally,
 record the NuGet build and install checks as `not-run` until the GitHub Windows
 CI job completes; do not claim local NuGet verification.
 
-- [ ] **Step 2: Run both workflows in dry-run mode**
+- [ ] **Step 2: Run all release workflows in dry-run mode**
 
-Manually dispatch Homebrew and NuGet workflows with `publish=false` against an
-exact desktop CLI release.
+Manually dispatch Formula, Cask, and NuGet workflows with `publish=false`
+against exact desktop releases.
 
 Expected:
 
 - Homebrew run uploads a tested `lx.rb`;
+- Cask run uploads a tested `lexiang.rb` only when both DMGs are notarized;
 - NuGet run uploads a tested `.nupkg`;
 - neither run requests publication credentials; and
 - no external repository or registry changes.
@@ -635,15 +724,17 @@ Verify:
 
 ```text
 Formula/lx.rb contains the exact desktop URLs and digests.
+Casks/lexiang.rb contains the exact notarized Desktop DMG URLs and digests.
 TencentLexiang.Cli.<version>.nupkg contains only the managed launcher and lx.exe.
-Both packaged lx commands report the requested CLI version.
+Both packaged lx commands report the requested CLI version, and the installed
+Cask contains TencentLexiang.app.
 ```
 
 - [ ] **Step 4: Update the OpenSpec task ledger**
 
-Mark only evidence-backed tasks complete. Leave real Homebrew and NuGet
-publication unchecked until credentials are configured and one approved
-release succeeds.
+Mark only evidence-backed tasks complete. Leave real Formula, Cask, and NuGet
+publication unchecked until credentials are configured and approved releases
+succeed.
 
 - [ ] **Step 5: Commit final verification state**
 
