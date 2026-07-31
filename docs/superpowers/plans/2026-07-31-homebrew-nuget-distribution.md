@@ -305,7 +305,9 @@ and asserts:
 self.assertIn("workflow_dispatch:", workflow)
 self.assertIn("publish:", workflow)
 self.assertIn("environment: release", workflow)
-self.assertIn("HOMEBREW_TAP_TOKEN", workflow)
+self.assertIn("actions/create-github-app-token@v2", workflow)
+self.assertIn("HOMEBREW_TAP_APP_ID", workflow)
+self.assertIn("HOMEBREW_TAP_APP_PRIVATE_KEY", workflow)
 self.assertIn("HOMEBREW_TAP_REPOSITORY", workflow)
 self.assertNotIn("cargo build", workflow)
 self.assertNotIn("pull_request_target", workflow)
@@ -332,8 +334,11 @@ The workflow MUST:
 - test on `macos-latest` with `brew audit --strict` and a local install;
 - run the publish job only when `publish == true`;
 - attach the publish job to the protected `release` environment;
-- clone `${{ vars.HOMEBREW_TAP_REPOSITORY }}` with
-  `${{ secrets.HOMEBREW_TAP_TOKEN }}`;
+- use `actions/create-github-app-token@v2` with
+  `${{ vars.HOMEBREW_TAP_APP_ID }}` and
+  `${{ secrets.HOMEBREW_TAP_APP_PRIVATE_KEY }}` to mint a short-lived token
+  scoped to `tencent-lexiang/homebrew-tap`;
+- clone `${{ vars.HOMEBREW_TAP_REPOSITORY }}` with that installation token;
 - copy the already-tested formula, commit `lx <version>`, and push; and
 - use concurrency key `homebrew-lx-release`.
 
@@ -520,12 +525,17 @@ environment or any secret.
 Document these exact supported paths:
 
 1. Create the public `tencent-lexiang/homebrew-tap` repository.
-2. Prefer a GitHub App installation token for long-lived organization
-   automation.
+2. Create an organization-owned GitHub App with `Contents: Read and write`,
+   install it only on `tencent-lexiang/homebrew-tap`, generate a private key,
+   set `HOMEBREW_TAP_APP_ID` as a `release` environment variable, and store the
+   PEM contents as the `release` environment secret
+   `HOMEBREW_TAP_APP_PRIVATE_KEY`. The workflow mints a short-lived
+   installation token for each publication.
 3. Bootstrap alternative: create a fine-grained PAT scoped only to
    `tencent-lexiang/homebrew-tap` with `Contents: Read and write` and
    `Metadata: Read`; set an expiration and store it as the `release`
-   environment secret `HOMEBREW_TAP_TOKEN`.
+   environment secret `HOMEBREW_TAP_TOKEN`, then use the documented fallback
+   workflow patch.
 4. Set `HOMEBREW_TAP_REPOSITORY=tencent-lexiang/homebrew-tap`,
    `LEXIANG_CLI_MANIFEST_BASE_URL`, and
    `LEXIANG_CLI_RELEASE_PUBLIC_KEY_B64` as `release` environment variables.
