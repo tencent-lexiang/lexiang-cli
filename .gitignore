@@ -1,14 +1,13 @@
-# Rust
-target
-*.rs.bk
-Cargo.lock.bak
-
 # Node.js
 node_modules/
 dist/
 *.tsbuildinfo
 .eslintcache
 *.vsix
+
+# NuGet
+packages/nuget-cli/bin/
+packages/nuget-cli/obj/
 
 # IDE
 .idea/
@@ -38,6 +37,3 @@ docs/plans.worktrees/
 openspec/specs
 openspec/changes
 packages/app-vscode/bin/lx
-
-# Generated from a company-specific MCP capability set; force-add only when intended.
-schemas/lexiang.json
