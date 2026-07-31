@@ -1,0 +1,113 @@
+name: Publish NuGet CLI
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: CLI version, without v prefix
+        required: true
+        type: string
+      publish:
+        description: Publish TencentLexiang.Cli to nuget.org
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-latest
+    env:
+      CDN_ROOT: ${{ secrets.LEXIANG_CLI_CDN_ROOT }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Download CLI and build NuGet package
+        shell: pwsh
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CDN_ROOT)) {
+            throw "LEXIANG_CLI_CDN_ROOT secret is required"
+          }
+          Write-Output "::add-mask::$env:CDN_ROOT"
+          if ($env:VERSION -notmatch '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$') {
+            throw "Invalid version: $env:VERSION"
+          }
+
+          New-Item -ItemType Directory -Force -Path downloads, artifacts
+          $binary = Join-Path $PWD "downloads/lx.exe"
+          $url = "$env:CDN_ROOT/win/cli/$env:VERSION/lx.exe"
+          Invoke-WebRequest -Uri $url -OutFile $binary
+
+          $nativeVersion = & $binary version
+          if ($LASTEXITCODE -ne 0 -or $nativeVersion -notlike "*$env:VERSION*") {
+            throw "Downloaded lx.exe version mismatch: $nativeVersion"
+          }
+
+          dotnet pack packages/nuget-cli/TencentLexiang.Cli.csproj `
+            --configuration Release `
+            "-p:PackageVersion=$env:VERSION" `
+            "-p:LxBinaryPath=$binary" `
+            --output artifacts
+
+          dotnet tool install `
+            --tool-path "$PWD/tool" `
+            --add-source "$PWD/artifacts" `
+            --ignore-failed-sources `
+            TencentLexiang.Cli `
+            --version "$env:VERSION"
+
+          $packagedVersion = & "$PWD/tool/lx.exe" version
+          if ($LASTEXITCODE -ne 0 -or $packagedVersion -notlike "*$env:VERSION*") {
+            throw "Packaged lx version mismatch: $packagedVersion"
+          }
+
+      - name: Upload tested NuGet package
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-lx-${{ inputs.version }}
+          path: artifacts/TencentLexiang.Cli.${{ inputs.version }}.nupkg
+          if-no-files-found: error
+
+  publish:
+    if: ${{ inputs.publish }}
+    needs: package
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Download tested NuGet package
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-lx-${{ inputs.version }}
+          path: artifacts
+
+      - name: Login to nuget.org
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Publish package
+        env:
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+        run: |
+          dotnet nuget push "artifacts/TencentLexiang.Cli.${{ inputs.version }}.nupkg" \
+            --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json

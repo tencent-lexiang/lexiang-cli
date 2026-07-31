@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>lx</ToolCommandName>
+    <PackageId>TencentLexiang.Cli</PackageId>
+    <PackageDescription>Tencent Lexiang command-line client</PackageDescription>
+    <Authors>Tencent Lexiang</Authors>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/tencent-lexiang/lexiang-cli</RepositoryUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" Link="README.md" />
+    <None
+      Condition="'$(LxBinaryPath)' != ''"
+      Include="$(LxBinaryPath)"
+      Pack="true"
+      PackagePath="tools/net8.0/any/native/lx.exe"
+    />
+  </ItemGroup>
+
+  <Target Name="ValidateLxBinary" BeforeTargets="GenerateNuspec">
+    <Error
+      Condition="'$(LxBinaryPath)' == '' or !Exists('$(LxBinaryPath)')"
+      Text="LxBinaryPath must point to the lexiang-desktop lx.exe"
+    />
+  </Target>
+</Project>

@@ -1,0 +1,139 @@
+name: Publish Homebrew Formula
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: CLI version, without v prefix
+        required: true
+        type: string
+      publish:
+        description: Update tencent-lexiang/homebrew-tap
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: macos-latest
+    env:
+      CDN_ROOT: ${{ secrets.LEXIANG_CLI_CDN_ROOT }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download CLI and generate Formula
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          : "${CDN_ROOT:?LEXIANG_CLI_CDN_ROOT secret is required}"
+          echo "::add-mask::$CDN_ROOT"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid version: $VERSION" >&2
+            exit 1
+          fi
+
+          mkdir -p downloads Formula
+          ARM64_URL="$CDN_ROOT/mac-arm64/cli/$VERSION/lx"
+          X64_URL="$CDN_ROOT/mac-x64/cli/$VERSION/lx"
+          curl --fail --location --proto '=https' --output downloads/lx-arm64 "$ARM64_URL"
+          curl --fail --location --proto '=https' --output downloads/lx-x64 "$X64_URL"
+          chmod +x downloads/lx-arm64 downloads/lx-x64
+
+          ARM64_SHA256="$(shasum -a 256 downloads/lx-arm64 | awk '{print $1}')"
+          X64_SHA256="$(shasum -a 256 downloads/lx-x64 | awk '{print $1}')"
+
+          cat > Formula/lx.rb <<RUBY
+          class Lx < Formula
+            desc "Tencent Lexiang command-line client"
+            homepage "https://lexiang.tencent.com"
+            license "MIT"
+
+            depends_on :macos
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "$ARM64_URL"
+                sha256 "$ARM64_SHA256"
+              else
+                url "$X64_URL"
+                sha256 "$X64_SHA256"
+              end
+            end
+
+            def install
+              bin.install "lx"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/lx version")
+            end
+          end
+          RUBY
+
+          ruby -c Formula/lx.rb
+          brew tap-new --no-git local/lexiang-distribution
+          TAP_ROOT="$(brew --repository local/lexiang-distribution)"
+          cp Formula/lx.rb "$TAP_ROOT/Formula/lx.rb"
+          brew audit --strict --formula local/lexiang-distribution/lx
+          brew install --formula local/lexiang-distribution/lx
+          lx version | grep -F "$VERSION"
+
+      - name: Upload tested Formula
+        uses: actions/upload-artifact@v4
+        with:
+          name: homebrew-lx-${{ inputs.version }}
+          path: Formula/lx.rb
+          if-no-files-found: error
+
+  publish:
+    if: ${{ inputs.publish }}
+    needs: package
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - name: Download tested Formula
+        uses: actions/download-artifact@v4
+        with:
+          name: homebrew-lx-${{ inputs.version }}
+          path: candidate
+
+      - name: Create Homebrew tap token
+        id: tap-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.HOMEBREW_TAP_APP_ID }}
+          private-key: ${{ secrets.HOMEBREW_TAP_APP_PRIVATE_KEY }}
+          owner: tencent-lexiang
+          repositories: homebrew-tap
+
+      - name: Checkout Homebrew tap
+        uses: actions/checkout@v5
+        with:
+          repository: tencent-lexiang/homebrew-tap
+          token: ${{ steps.tap-token.outputs.token }}
+          path: tap
+
+      - name: Publish Formula
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p tap/Formula
+          cp candidate/lx.rb tap/Formula/lx.rb
+          cd tap
+          if [[ -z "$(git status --porcelain -- Formula/lx.rb)" ]]; then
+            echo "Formula/lx.rb has no changes" >&2
+            exit 1
+          fi
+          git config user.name "lexiang-release[bot]"
+          git config user.email "lexiang-release[bot]@users.noreply.github.com"
+          git add Formula/lx.rb
+          git commit -m "lx $VERSION"
+          git push origin HEAD:main
