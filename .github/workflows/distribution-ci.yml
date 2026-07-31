@@ -1,0 +1,122 @@
+name: Distribution CI
+
+on:
+  push:
+    branches: [main, master, develop]
+    paths:
+      - 'distribution/**'
+      - 'docs/releasing/**'
+      - 'README.md'
+      - '.github/workflows/distribution-ci.yml'
+      - '.github/workflows/homebrew-release.yml'
+      - '.github/workflows/homebrew-cask-release.yml'
+      - '.github/workflows/nuget-release.yml'
+  pull_request:
+    branches: [main, master, develop]
+    paths:
+      - 'distribution/**'
+      - 'docs/releasing/**'
+      - 'README.md'
+      - '.github/workflows/distribution-ci.yml'
+      - '.github/workflows/homebrew-release.yml'
+      - '.github/workflows/homebrew-cask-release.yml'
+      - '.github/workflows/nuget-release.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate distribution adapters
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Run Python contracts
+        run: python3 -m unittest discover -s distribution -p 'test_*.py' -v
+
+      - name: Render Ruby fixtures
+        run: |
+          python3 -m distribution.homebrew.render_formula \
+            --version 0.0.0-test \
+            --arm64-url https://static.lexiang-asset.com/test/arm64/lx \
+            --arm64-sha256 0000000000000000000000000000000000000000000000000000000000000000 \
+            --x64-url https://static.lexiang-asset.com/test/x64/lx \
+            --x64-sha256 1111111111111111111111111111111111111111111111111111111111111111 \
+            --output /tmp/lx.rb
+          python3 -m distribution.homebrew.render_cask \
+            --version 0.0.0-test \
+            --date-stamp 20260731 \
+            --arm64-sha256 0000000000000000000000000000000000000000000000000000000000000000 \
+            --x64-sha256 1111111111111111111111111111111111111111111111111111111111111111 \
+            --output /tmp/lexiang.rb
+          ruby -c /tmp/lx.rb
+          ruby -c /tmp/lexiang.rb
+
+      - name: Set up actionlint
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+
+      - name: Lint GitHub Actions
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+          actionlint .github/workflows/distribution-ci.yml
+          actionlint .github/workflows/homebrew-release.yml
+          actionlint .github/workflows/homebrew-cask-release.yml
+          actionlint .github/workflows/nuget-release.yml
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Lint distribution documentation
+        run: |
+          npx --yes markdownlint-cli2@0.17.2 \
+            README.md \
+            'docs/releasing/*.md' \
+            'distribution/**/*.md'
+
+  nuget-windows:
+    name: Validate NuGet tool on Windows
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Test and inspect NuGet package
+        shell: pwsh
+        run: |
+          dotnet test `
+            distribution/nuget/TencentLexiang.Cli.Tests/TencentLexiang.Cli.Tests.csproj `
+            --configuration Release
+
+          $nativeBinary = Join-Path $env:RUNNER_TEMP "lx.exe"
+          $packageDirectory = Join-Path $env:RUNNER_TEMP "lexiang-nuget"
+          Copy-Item "$env:WINDIR/System32/where.exe" $nativeBinary
+          dotnet pack `
+            distribution/nuget/TencentLexiang.Cli/TencentLexiang.Cli.csproj `
+            --configuration Release `
+            -p:PackageVersion=0.0.0-test `
+            "-p:LxBinaryPath=$nativeBinary" `
+            --output $packageDirectory
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $package = Join-Path $packageDirectory "TencentLexiang.Cli.0.0.0-test.nupkg"
+          $archive = [System.IO.Compression.ZipFile]::OpenRead($package)
+          try {
+            $nativeEntry = $archive.Entries |
+              Where-Object FullName -eq "tools/net8.0/any/native/lx.exe"
+            if (-not $nativeEntry) {
+              throw "NuGet package does not contain native/lx.exe"
+            }
+          } finally {
+            $archive.Dispose()
+          }

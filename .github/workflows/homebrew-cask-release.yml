@@ -1,0 +1,186 @@
+name: Homebrew Desktop Cask Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact Desktop semantic version
+        required: true
+        type: string
+      date_stamp:
+        description: Eight-digit artifact build date
+        required: true
+        type: string
+      publish:
+        description: Publish the tested Cask to the tap
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: homebrew-lexiang-cask-release
+  cancel-in-progress: false
+
+env:
+  APP_CDN_ROOT: https://static.lexiang-asset.com/download/app/lexiang-desktop
+
+jobs:
+  build:
+    name: Verify and render Cask
+    runs-on: macos-latest
+    steps:
+      - name: Checkout distribution source
+        uses: actions/checkout@v5
+
+      - name: Validate release inputs
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_DATE_STAMP: ${{ inputs.date_stamp }}
+        run: |
+          if [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid semantic version: $RELEASE_VERSION" >&2
+            exit 1
+          fi
+          if [[ ! "$RELEASE_DATE_STAMP" =~ ^[0-9]{8}$ ]]; then
+            echo "Invalid date stamp: $RELEASE_DATE_STAMP" >&2
+            exit 1
+          fi
+
+      - name: Download exact public DMGs
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_DATE_STAMP: ${{ inputs.date_stamp }}
+        run: |
+          mkdir -p verified
+          for arch in arm64 x64; do
+            platform="mac-$arch"
+            filename="lexiang-desktop-$RELEASE_VERSION-$RELEASE_DATE_STAMP-$arch.dmg"
+            url="$APP_CDN_ROOT/$platform/$RELEASE_VERSION/$filename"
+            curl --fail --location --proto '=https' --tlsv1.2 \
+              --retry 3 --output "verified/$arch.dmg" "$url"
+          done
+
+      - name: Verify Developer ID, Gatekeeper, and notarization
+        run: |
+          set -euo pipefail
+          for arch in arm64 x64; do
+            dmg="$PWD/verified/$arch.dmg"
+            mountpoint="$(mktemp -d)"
+            cleanup() {
+              hdiutil detach "$mountpoint" >/dev/null 2>&1 || true
+              rmdir "$mountpoint" >/dev/null 2>&1 || true
+            }
+            trap cleanup EXIT
+            hdiutil attach -nobrowse -readonly -mountpoint "$mountpoint" "$dmg"
+            app="$mountpoint/TencentLexiang.app"
+            if [[ ! -d "$app" ]]; then
+              echo "TencentLexiang.app is missing from $arch DMG" >&2
+              exit 1
+            fi
+            codesign --verify --deep --strict --verbose=2 "$app"
+            spctl --assess --type execute --verbose=4 "$app"
+            xcrun stapler validate "$app"
+            xcrun stapler validate "$dmg"
+            cleanup
+            trap - EXIT
+          done
+
+      - name: Render Casks/lexiang.rb
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_DATE_STAMP: ${{ inputs.date_stamp }}
+        run: |
+          arm64_sha256="$(shasum -a 256 verified/arm64.dmg | awk '{print $1}')"
+          x64_sha256="$(shasum -a 256 verified/x64.dmg | awk '{print $1}')"
+          python3 -m distribution.homebrew.render_cask \
+            --version "$RELEASE_VERSION" \
+            --date-stamp "$RELEASE_DATE_STAMP" \
+            --arm64-sha256 "$arm64_sha256" \
+            --x64-sha256 "$x64_sha256" \
+            --output Casks/lexiang.rb
+          ruby -c Casks/lexiang.rb
+          mkdir -p candidate/Casks
+          cp Casks/lexiang.rb candidate/Casks/lexiang.rb
+
+      - name: Upload Cask candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: homebrew-cask-lexiang-${{ inputs.version }}
+          path: candidate
+          if-no-files-found: error
+          retention-days: 14
+
+  test:
+    name: Audit and install Cask
+    needs: build
+    runs-on: macos-latest
+    steps:
+      - name: Download Cask candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: homebrew-cask-lexiang-${{ inputs.version }}
+
+      - name: Register candidate in a local tap
+        run: |
+          brew tap-new --no-git local/lexiang-distribution
+          tap_root="$(brew --repository local/lexiang-distribution)"
+          mkdir -p "$tap_root/Casks"
+          cp Casks/lexiang.rb "$tap_root/Casks/lexiang.rb"
+
+      - name: Audit Cask
+        run: brew audit --cask --strict local/lexiang-distribution/lexiang
+
+      - name: Install Cask
+        run: |
+          brew install --cask local/lexiang-distribution/lexiang
+          test -d /Applications/TencentLexiang.app
+
+  publish:
+    name: Publish Cask to tap
+    if: ${{ inputs.publish }}
+    needs: test
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - name: Download tested Cask
+        uses: actions/download-artifact@v4
+        with:
+          name: homebrew-cask-lexiang-${{ inputs.version }}
+
+      - name: Create tap installation token
+        id: tap-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.HOMEBREW_TAP_APP_ID }}
+          private-key: ${{ secrets.HOMEBREW_TAP_APP_PRIVATE_KEY }}
+          owner: tencent-lexiang
+          repositories: homebrew-tap
+
+      - name: Checkout Homebrew tap
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ vars.HOMEBREW_TAP_REPOSITORY }}
+          token: ${{ steps.tap-token.outputs.token }}
+          path: tap
+
+      - name: Commit tested Cask
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          mkdir -p tap/Casks
+          cp Casks/lexiang.rb tap/Casks/lexiang.rb
+          cd tap
+          if [[ -z "$(git status --porcelain -- Casks/lexiang.rb)" ]]; then
+            echo "Casks/lexiang.rb has no changes" >&2
+            exit 1
+          fi
+          git config user.name "lexiang-release[bot]"
+          git config user.email "lexiang-release[bot]@users.noreply.github.com"
+          git add Casks/lexiang.rb
+          git commit -m "lexiang $RELEASE_VERSION"
+          git push origin HEAD:main

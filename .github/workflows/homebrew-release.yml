@@ -1,0 +1,214 @@
+name: Homebrew CLI Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact desktop CLI semantic version
+        required: true
+        type: string
+      publish:
+        description: Publish the tested Formula to the tap
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: homebrew-lx-release
+  cancel-in-progress: false
+
+env:
+  CLI_CDN_ROOT: https://static.lexiang-asset.com/download/app/lexiang-desktop
+  CLI_ALLOWED_HOST: static.lexiang-asset.com
+
+jobs:
+  build:
+    name: Verify and render Formula
+    runs-on: macos-latest
+    steps:
+      - name: Checkout distribution source
+        uses: actions/checkout@v5
+
+      - name: Validate release inputs
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid semantic version: $RELEASE_VERSION" >&2
+            exit 1
+          fi
+
+      - name: Decode CLI release public key
+        env:
+          LEXIANG_CLI_RELEASE_PUBLIC_KEY_B64: ${{ vars.LEXIANG_CLI_RELEASE_PUBLIC_KEY_B64 }}
+        run: |
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          value = os.environ.get("LEXIANG_CLI_RELEASE_PUBLIC_KEY_B64", "")
+          if not value:
+              raise SystemExit("LEXIANG_CLI_RELEASE_PUBLIC_KEY_B64 is required")
+          try:
+              decoded = base64.b64decode(value, validate=True)
+          except ValueError as error:
+              raise SystemExit(f"invalid CLI release public key base64: {error}")
+          Path("cli-release-public-key.pem").write_bytes(decoded)
+          PY
+
+      - name: Verify desktop CLI artifacts
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from distribution.release.manifest import fetch_and_verify
+
+          root = os.environ["CLI_CDN_ROOT"]
+          version = os.environ["RELEASE_VERSION"]
+          targets = {
+              "arm64": ("mac-arm64", "darwin", "arm64"),
+              "x64": ("mac-x64", "darwin", "x64"),
+          }
+          metadata = {}
+          for name, (directory, platform, arch) in targets.items():
+              manifest_url = f"{root}/{directory}/cli/manifest.json"
+              verified = fetch_and_verify(
+                  manifest_url=manifest_url,
+                  signature_url=f"{manifest_url}.sig",
+                  public_key=Path("cli-release-public-key.pem"),
+                  expected_version=version,
+                  expected_platform=platform,
+                  expected_arch=arch,
+                  allowed_hosts={os.environ["CLI_ALLOWED_HOST"]},
+                  output_dir=Path("verified") / name,
+              )
+              metadata[name] = {
+                  "url": verified.url,
+                  "sha256": verified.sha256,
+              }
+          Path("verified/metadata.json").write_text(
+              json.dumps(metadata, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Render Formula/lx.rb
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from distribution.homebrew.render_formula import render_formula
+
+          metadata = json.loads(Path("verified/metadata.json").read_text())
+          formula = render_formula(
+              version=os.environ["RELEASE_VERSION"],
+              arm64_url=metadata["arm64"]["url"],
+              arm64_sha256=metadata["arm64"]["sha256"],
+              x64_url=metadata["x64"]["url"],
+              x64_sha256=metadata["x64"]["sha256"],
+          )
+          output = Path("Formula/lx.rb")
+          output.parent.mkdir(parents=True, exist_ok=True)
+          output.write_text(formula, encoding="utf-8")
+          PY
+          ruby -c Formula/lx.rb
+          mkdir -p candidate/Formula
+          cp Formula/lx.rb candidate/Formula/lx.rb
+
+      - name: Upload Formula candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: homebrew-lx-${{ inputs.version }}
+          path: candidate
+          if-no-files-found: error
+          retention-days: 14
+
+  test:
+    name: Audit and install Formula
+    needs: build
+    runs-on: macos-latest
+    steps:
+      - name: Download Formula candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: homebrew-lx-${{ inputs.version }}
+
+      - name: Register candidate in a local tap
+        run: |
+          brew tap-new --no-git local/lexiang-distribution
+          tap_root="$(brew --repository local/lexiang-distribution)"
+          mkdir -p "$tap_root/Formula"
+          cp Formula/lx.rb "$tap_root/Formula/lx.rb"
+
+      - name: Audit Formula
+        run: brew audit --strict --formula local/lexiang-distribution/lx
+
+      - name: Install and execute Formula
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          brew install --formula local/lexiang-distribution/lx
+          installed_version="$(lx version)"
+          if [[ "$installed_version" != *"$RELEASE_VERSION"* ]]; then
+            echo "Installed lx version mismatch: $installed_version" >&2
+            exit 1
+          fi
+
+  publish:
+    name: Publish Formula to tap
+    if: ${{ inputs.publish }}
+    needs: test
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - name: Download tested Formula
+        uses: actions/download-artifact@v4
+        with:
+          name: homebrew-lx-${{ inputs.version }}
+
+      - name: Create tap installation token
+        id: tap-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.HOMEBREW_TAP_APP_ID }}
+          private-key: ${{ secrets.HOMEBREW_TAP_APP_PRIVATE_KEY }}
+          owner: tencent-lexiang
+          repositories: homebrew-tap
+
+      - name: Checkout Homebrew tap
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ vars.HOMEBREW_TAP_REPOSITORY }}
+          token: ${{ steps.tap-token.outputs.token }}
+          path: tap
+
+      - name: Commit tested Formula
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          mkdir -p tap/Formula
+          cp Formula/lx.rb tap/Formula/lx.rb
+          cd tap
+          if [[ -z "$(git status --porcelain -- Formula/lx.rb)" ]]; then
+            echo "Formula/lx.rb has no changes" >&2
+            exit 1
+          fi
+          git config user.name "lexiang-release[bot]"
+          git config user.email "lexiang-release[bot]@users.noreply.github.com"
+          git add Formula/lx.rb
+          git commit -m "lx $RELEASE_VERSION"
+          git push origin HEAD:main

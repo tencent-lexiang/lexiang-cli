@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>lx</ToolCommandName>
+    <PackageId>TencentLexiang.Cli</PackageId>
+    <PackageDescription>Tencent Lexiang command-line client</PackageDescription>
+    <Authors>Tencent Lexiang</Authors>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <RepositoryUrl>https://github.com/tencent-lexiang/lexiang-cli</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TencentLexiang.Cli.Tests" />
+    <None Include="../README.md" Pack="true" PackagePath="/" Link="README.md" />
+    <None
+      Condition="'$(LxBinaryPath)' != ''"
+      Include="$(LxBinaryPath)"
+      Pack="true"
+      PackagePath="tools/net8.0/any/native/lx.exe"
+    />
+  </ItemGroup>
+
+  <Target Name="ValidateLxBinary" BeforeTargets="GenerateNuspec">
+    <Error
+      Condition="'$(LxBinaryPath)' == ''"
+      Text="LxBinaryPath must point to the verified desktop lx.exe"
+    />
+    <Error
+      Condition="'$(LxBinaryPath)' != '' and !Exists('$(LxBinaryPath)')"
+      Text="LxBinaryPath does not exist: $(LxBinaryPath)"
+    />
+  </Target>
+</Project>

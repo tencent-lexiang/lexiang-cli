@@ -2,14 +2,19 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-乐享知识库工具集，包含 **2 个独立产品**：
+乐享知识库工具集与公开分发入口。
+
+> `lx` 原生实现和 Desktop App 由 `lexiang-desktop` 统一构建、签名和托管。
+> 本仓库逐步转为 Homebrew/NuGet 分发编排与 IDE 插件源码仓库；旧 Rust CLI
+> 源码在分发验证完成前暂时保留，不再作为新发布的事实源。
 
 | 产品 | 说明 | 安装方式 | 更新方式 |
 |------|------|----------|----------|
-| **lx CLI** | 命令行工具，虚拟 Shell / Git 版本化管理 / 动态命令 | 安装脚本 / cargo / Release | 自动检查（24h） |
+| **lx CLI** | `lexiang-desktop` 构建的统一命令行入口 | Homebrew / NuGet | 对应包管理器 |
+| **Desktop App** | 乐享知识库桌面客户端 | Homebrew Cask | Cask / 应用内更新 |
 | **VS Code 扩展** | VS Code 知识库浏览与编辑插件 | Release 下载 .vsix | 自动检查（4h） |
 
-> 两个产品共享同一仓库，通过不同的 Release Tag 独立发布：`cli-v*`、`vscode-v*`。
+> 原生程序来自公网 CDN；本仓库的发布工作流只消费经过验证的现成产物。
 
 ---
 
@@ -17,55 +22,31 @@
 
 ### 1. lx CLI
 
-Rust 编写的命令行工具，支持在线操作和本地工作区两种模式。
-
-#### 无 Cargo 环境（推荐）
+macOS 使用 Homebrew Formula：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tencent-lexiang/lexiang-cli/main/scripts/install.sh | sh
+brew install tencent-lexiang/tap/lx
 ```
 
-自定义安装目录：
+Windows 使用 NuGet global tool：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tencent-lexiang/lexiang-cli/main/scripts/install.sh | sh -s -- --dir /usr/local/bin
+dotnet tool install --global TencentLexiang.Cli
 ```
 
-脚本会自动：
+两种安装方式都使用 `lexiang-desktop` 构建并签名的原生 CLI；本仓库只进行
+验签、包装和发布，不重新编译原生程序。
 
-- 检测当前平台并选择对应二进制
-- 通过 `releases/latest/download` 下载最新版本
-- 校验 `SHA256SUMS.txt`
-- 安装到 `~/.local/bin`（或你指定的目录）
-
-#### Rust 生态安装
+### 2. Desktop App
 
 ```bash
-cargo install --git https://github.com/tencent-lexiang/lexiang-cli --locked
+brew install --cask tencent-lexiang/tap/lexiang
 ```
 
-#### 从 Release 下载
+该 Cask 只接受通过 Developer ID 签名、Gatekeeper 和 Apple 公证验证的
+`TencentLexiang.app` 公网 CDN 产物。
 
-直接从 [GitHub Releases](https://github.com/tencent-lexiang/lexiang-cli/releases) 下载对应平台二进制，支持 macOS (arm64/x86_64/universal)、Linux (x86_64/arm64/musl)、Windows (x86_64)。
-
-#### 本地源码安装
-
-```bash
-git clone https://github.com/tencent-lexiang/lexiang-cli.git
-cd lexiang-cli
-cargo install --path crates/lx
-```
-
-#### 更新检查
-
-```bash
-lx update check     # 检查是否有新版本
-lx update list      # 列出最近发布版本
-```
-
-CLI 每隔 24 小时自动静默检查更新，有新版本时提示。
-
-### 2. VS Code 扩展
+### 3. VS Code 扩展
 
 在 VS Code 中浏览和管理乐享知识库，支持文档查看、知识库挂载、AI 对话集成等。
 

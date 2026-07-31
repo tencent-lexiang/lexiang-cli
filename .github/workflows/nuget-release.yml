@@ -1,0 +1,163 @@
+name: NuGet CLI Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact desktop CLI semantic version
+        required: true
+        type: string
+      publish:
+        description: Publish the tested package to nuget.org
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nuget-lx-release
+  cancel-in-progress: false
+
+env:
+  CLI_CDN_ROOT: https://static.lexiang-asset.com/download/app/lexiang-desktop
+  CLI_ALLOWED_HOST: static.lexiang-asset.com
+
+jobs:
+  build:
+    name: Verify, pack, and install NuGet tool
+    runs-on: windows-latest
+    steps:
+      - name: Checkout distribution source
+        uses: actions/checkout@v5
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Validate release inputs
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          if ($env:RELEASE_VERSION -notmatch '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$') {
+            throw "Invalid semantic version: $env:RELEASE_VERSION"
+          }
+
+      - name: Decode CLI release public key
+        shell: pwsh
+        env:
+          LEXIANG_CLI_RELEASE_PUBLIC_KEY_B64: ${{ vars.LEXIANG_CLI_RELEASE_PUBLIC_KEY_B64 }}
+        run: |
+          python -c "import base64, os, pathlib; value=os.environ.get('LEXIANG_CLI_RELEASE_PUBLIC_KEY_B64', ''); assert value, 'LEXIANG_CLI_RELEASE_PUBLIC_KEY_B64 is required'; pathlib.Path('cli-release-public-key.pem').write_bytes(base64.b64decode(value, validate=True))"
+          where.exe openssl
+
+      - name: Verify desktop Windows CLI artifact
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          @'
+          import os
+          from pathlib import Path
+
+          from distribution.release.manifest import fetch_and_verify
+
+          manifest_url = f"{os.environ['CLI_CDN_ROOT']}/win/cli/manifest.json"
+          verified = fetch_and_verify(
+              manifest_url=manifest_url,
+              signature_url=f"{manifest_url}.sig",
+              public_key=Path("cli-release-public-key.pem"),
+              expected_version=os.environ["RELEASE_VERSION"],
+              expected_platform="win32",
+              expected_arch="x64",
+              allowed_hosts={os.environ["CLI_ALLOWED_HOST"]},
+              output_dir=Path("verified") / "win",
+          )
+          if verified.binary.name != "lx.exe":
+              raise SystemExit("verified Windows artifact is not lx.exe")
+          '@ | python -
+
+      - name: Run launcher tests
+        run: dotnet test distribution/nuget/TencentLexiang.Cli.Tests/TencentLexiang.Cli.Tests.csproj --configuration Release
+
+      - name: Pack verified native CLI
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          dotnet pack distribution/nuget/TencentLexiang.Cli/TencentLexiang.Cli.csproj `
+            --configuration Release `
+            -p:PackageVersion="$env:RELEASE_VERSION" `
+            -p:LxBinaryPath="$PWD/verified/win/lx.exe" `
+            --output artifacts
+
+      - name: Install generated NuGet tool
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          dotnet tool install `
+            --tool-path "$PWD/tool" `
+            --add-source "$PWD/artifacts" `
+            --ignore-failed-sources `
+            TencentLexiang.Cli `
+            --version "$env:RELEASE_VERSION"
+
+      - name: Run packaged lx version
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          $installedVersion = & "$PWD/tool/lx.exe" version
+          if ($LASTEXITCODE -ne 0) {
+            throw "Packaged lx version command failed"
+          }
+          if ($installedVersion -notlike "*$env:RELEASE_VERSION*") {
+            throw "Installed lx version mismatch: $installedVersion"
+          }
+
+      - name: Upload NuGet candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-lx-${{ inputs.version }}
+          path: artifacts/TencentLexiang.Cli.${{ inputs.version }}.nupkg
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish package to nuget.org
+    if: ${{ inputs.publish }}
+    needs: build
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Download tested NuGet package
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-lx-${{ inputs.version }}
+          path: artifacts
+
+      - name: Exchange GitHub OIDC for a temporary NuGet key
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Publish exact tested package
+        env:
+          NUGET_TEMP_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+        run: |
+          dotnet nuget push "artifacts/TencentLexiang.Cli.${{ inputs.version }}.nupkg" \
+            --api-key "$NUGET_TEMP_API_KEY" \
+            --source https://api.nuget.org/v3/index.json

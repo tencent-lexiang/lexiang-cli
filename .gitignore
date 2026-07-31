@@ -10,6 +10,10 @@ dist/
 .eslintcache
 *.vsix
 
+# .NET
+**/bin/
+**/obj/
+
 # IDE
 .idea/
 .vscode/

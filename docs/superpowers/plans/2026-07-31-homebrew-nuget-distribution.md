@@ -266,14 +266,15 @@ Tests MUST assert that the rendered formula:
 ```python
 self.assertIn('class Lx < Formula', formula)
 self.assertIn('depends_on :macos', formula)
-self.assertIn('on_arm do', formula)
-self.assertIn('on_intel do', formula)
+self.assertIn('on_macos do', formula)
+self.assertIn('if Hardware::CPU.arm?', formula)
 self.assertIn('bin.install "lx"', formula)
 self.assertIn('shell_output("#{bin}/lx version")', formula)
 self.assertNotIn("latest", formula)
 ```
 
-Also assert the exact version, URLs, and SHA-256 values appear once.
+Also assert that Homebrew infers the version from each immutable URL, and that
+the exact URLs and SHA-256 values appear once.
 
 - [ ] **Step 2: Run tests and verify failure**
 
@@ -291,13 +292,15 @@ complete formula as a string.
 
 Generate a macOS-only `Lx` formula with fixed homepage
 `https://lexiang.tencent.com`, MIT license, architecture-specific immutable
-URLs, `bin.install "lx"`, and a `lx version` test.
+URLs selected under `on_macos` with `Hardware::CPU.arm?`, `bin.install "lx"`,
+and a `lx version` test. Do not emit a redundant explicit `version` declaration;
+Homebrew infers it from the immutable URLs.
 
 - [ ] **Step 4: Run unit and Homebrew syntax tests**
 
 ```bash
 python3 -m unittest distribution.homebrew.test_render_formula -v
-python3 distribution/homebrew/render_formula.py \
+python3 -m distribution.homebrew.render_formula \
   --version 0.0.0-test \
   --arm64-url https://static.lexiang-asset.com/test/arm64/lx \
   --arm64-sha256 0000000000000000000000000000000000000000000000000000000000000000 \
@@ -311,8 +314,9 @@ Expected: unit tests pass and Ruby prints `Syntax OK`.
 
 - [ ] **Step 5: Write failing Cask renderer tests**
 
-Tests MUST assert that the Cask uses token `lexiang`, exact versioned arm64/x64
-CDN URLs and SHA-256 values, `auto_updates true`, and
+Tests MUST assert that the Cask uses token `lexiang`, `arch arm: "arm64",
+intel: "x64"`, architecture-specific SHA-256 values, a CDN URL containing
+Homebrew `version`/`arch` interpolation, `auto_updates true`, and
 `app "TencentLexiang.app"`. The renderer MUST validate a semantic version and
 an eight-digit build date.
 
@@ -327,14 +331,15 @@ Expected: FAIL because the Cask renderer does not exist.
 - [ ] **Step 7: Implement deterministic Cask rendering**
 
 Expose a keyword-only `render_cask` function accepting `version`, `date_stamp`,
-`arm64_sha256`, and `x64_sha256`. Construct both URLs under the fixed public
-CDN, add `auto_updates true`, and install `TencentLexiang.app`.
+`arm64_sha256`, and `x64_sha256`. Construct one architecture-selecting URL
+under the fixed public CDN, add `auto_updates true`, and install
+`TencentLexiang.app`.
 
 - [ ] **Step 8: Run Cask unit and Ruby syntax tests**
 
 ```bash
 python3 -m unittest distribution.homebrew.test_render_cask -v
-python3 distribution/homebrew/render_cask.py \
+python3 -m distribution.homebrew.render_cask \
   --version 0.0.0-test \
   --date-stamp 20260731 \
   --arm64-sha256 0000000000000000000000000000000000000000000000000000000000000000 \
